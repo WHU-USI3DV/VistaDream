@@ -61,10 +61,7 @@ This is the official PyTorch implementation of the following publication:
 ## 💻 Requirements
 The code has been tested on:
 - Ubuntu 20.04
-- CUDA 12.3
-- Python 3.10.12
-- Pytorch 2.1.0
-- GeForce RTX 4090.
+- 1 * GeForce RTX 4090.
 
 ## 🔧 Installation
 For complete installation instructions, please see [INSTALL.md](INSTALL.md).
