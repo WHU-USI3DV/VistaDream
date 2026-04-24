@@ -1,5 +1,6 @@
 import scipy
 import numpy as np
+import scipy.interpolate
 from .basic import Traj_Base
 
 class Interp(Traj_Base):
@@ -35,16 +36,21 @@ class Interp(Traj_Base):
         T = np.array([self.viewmatrix(p - l, u - p, p) for p, l, u in points])
         T = np.concatenate([T,np.array([[[0,0,0,1]]]*len(T))],axis=1)
         return T
-    
-    def interp(self, points, n, k, s):
-        """Runs multidimensional B-spline interpolation on the input points."""
+
+    def interp(self, points, n):
+        """Runs multidimensional Linear interpolation on the input points."""
         sh = points.shape
         pts = np.reshape(points, (sh[0], -1))
-        k = min(k, sh[0] - 1)
-        tck, _ = scipy.interpolate.splprep(pts.T, k=k, s=s)
-        u = np.linspace(0, 1, n, endpoint=False)
-        new_points = np.array(scipy.interpolate.splev(u, tck))
-        new_points = np.reshape(new_points.T, (n, sh[1], sh[2]))
+        part_n = (n // (sh[0]-1)) + 1
+        new_points = []
+        for i in range(sh[0]-1):
+            part_pts = pts[i:i+2]
+            func = scipy.interpolate.interp1d(np.linspace(0,1,2),part_pts,axis=0,kind='linear')
+            part_points = np.array(func(np.linspace(0,1,part_n)))[:-1]
+            new_points.append(part_points)
+        new_points.append(pts[-1:])
+        new_points = np.concatenate(new_points,axis=0)
+        new_points = np.reshape(new_points, (new_points.shape[0], sh[1], sh[2]))
         return new_points
 
     def generate_interpolated_path(self, poses):
@@ -62,21 +68,31 @@ class Interp(Traj_Base):
             Returns:
                 Array of new camera poses with shape (n_interp * (n - 1), 3, 4).
         """
-        n_interp = (self.nframe//(len(poses)-1))+1
         points = self.poses_to_points(poses, dist=self.rot_weight)
-        new_points = self.interp(points,
-                            n_interp * (points.shape[0] - 1),
-                            k=self.spline_degree,
-                            s=self.smoothness)
-        return self.points_to_poses(new_points) 
+        new_points = self.interp(points,self.nframe)
+        poses = self.points_to_poses(new_points)
+        return poses
 
     def __call__(self):
         poses = []
-        N = len(self.scene.frames)
+        anchor_frames = []
+        for frame in self.scene.frames:
+            if frame.keep or frame.anchor:
+                anchor_frames.append(frame)
+        N = len(anchor_frames)
+        if N<2: return np.eye(4)[None].repeat(self.nframe,axis=0)
+        
+        # avoid adjactent same items
+        bgn = 1 if anchor_frames[1].extrinsic[0,0] > 0.99 and \
+                   anchor_frames[1].extrinsic[1,1] > 0.99 and \
+                   anchor_frames[1].extrinsic[2,2] > 0.99 else 0
+        anchor_frames = anchor_frames[bgn:]
+        N = len(anchor_frames)
+        if N<2: return np.eye(4)[None].repeat(self.nframe,axis=0)
+        
         for i in range(N):
-            frame = self.scene.frames[i]
-            if frame.keep:
-                poses.append(np.linalg.inv(frame.extrinsic[None]))
+            frame = anchor_frames[i]
+            poses.append(np.linalg.inv(frame.extrinsic[None]))
         poses = np.concatenate(poses,axis=0)
         trajs = self.generate_interpolated_path(poses)
         return trajs

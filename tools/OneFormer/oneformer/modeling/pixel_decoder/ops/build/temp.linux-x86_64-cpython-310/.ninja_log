@@ -1,7 +1,0 @@
-# ninja log v5
-0	2650	1720234525871784767	/mnt/proj/SOTAs/OneFormer-main/oneformer/modeling/pixel_decoder/ops/build/temp.linux-x86_64-cpython-310/mnt/proj/SOTAs/OneFormer-main/oneformer/modeling/pixel_decoder/ops/src/cpu/ms_deform_attn_cpu.o	e04510ad2278ca5e
-1	8072	1720234531287812184	/mnt/proj/SOTAs/OneFormer-main/oneformer/modeling/pixel_decoder/ops/build/temp.linux-x86_64-cpython-310/mnt/proj/SOTAs/OneFormer-main/oneformer/modeling/pixel_decoder/ops/src/cuda/ms_deform_attn_cuda.o	1a431f9137e549e6
-1	8279	1720234531495813237	/mnt/proj/SOTAs/OneFormer-main/oneformer/modeling/pixel_decoder/ops/build/temp.linux-x86_64-cpython-310/mnt/proj/SOTAs/OneFormer-main/oneformer/modeling/pixel_decoder/ops/src/vision.o	5587c5f83e87a0aa
-51	2425	1729260218136519964	/mnt/proj/code/tools/OneFormer/oneformer/modeling/pixel_decoder/ops/build/temp.linux-x86_64-cpython-310/mnt/proj/code/tools/OneFormer/oneformer/modeling/pixel_decoder/ops/src/cpu/ms_deform_attn_cpu.o	128863305f96e0
-51	7931	1729260223648575353	/mnt/proj/code/tools/OneFormer/oneformer/modeling/pixel_decoder/ops/build/temp.linux-x86_64-cpython-310/mnt/proj/code/tools/OneFormer/oneformer/modeling/pixel_decoder/ops/src/vision.o	b9f1a464b87f2aed
-51	7932	1729260223648575353	/mnt/proj/code/tools/OneFormer/oneformer/modeling/pixel_decoder/ops/build/temp.linux-x86_64-cpython-310/mnt/proj/code/tools/OneFormer/oneformer/modeling/pixel_decoder/ops/src/cuda/ms_deform_attn_cuda.o	da53419457e494a5

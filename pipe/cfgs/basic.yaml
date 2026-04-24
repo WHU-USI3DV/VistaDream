@@ -2,16 +2,22 @@ name: basic
 
 model:
   sky:
+    keep: True
     value: 1e5 # to update
-    oneformer:
-      ckpt: 'tools/OneFormer/checkpoints/coco_pretrain_1280x1280_150_16_dinat_l_oneformer_ade20k_160k.pth'
-      yaml: 'tools/OneFormer/configs/ade20k/dinat/coco_pretrain_oneformer_dinat_large_bs16_160k_1280x1280.yaml'
+    mask2former:
+      ckpt: "facebook/mask2former-swin-large-ade-semantic"
   vlm:
     llava:
       ckpt: 'llava-hf/bakLlava-v1-hf' # downloaded from hugging face
-  mde:
+      offline: False # True: only load from local cache/path, no network access
+  dpt:
     dpt_pro:
       ckpt: 'tools/DepthPro/checkpoints/depth_pro.pt'
+    daprior:
+      mde: 'tools/DAAnyPrior/checkpoints/depth_anything_v2_vitb.pth'
+      dap: 'tools/DAAnyPrior/checkpoints/prior_depth_anything_vitb.pth'
+    vggt:
+      ckpt: 'tools/VGGT/checkpoints/model.pt'
   paint:
     fooocus:
       ckpts: 'tools/Fooocus/models'
@@ -19,15 +25,29 @@ model:
     sd: 'sd-legacy/stable-diffusion-v1-5' # downloaded from hugging face
     lcm: 'tools/StableDiffusion/lcm_ckpt/pytorch_lora_weights.safetensors'
 
+tools:
+  preload: ['llava','rgb_inpaint','dpt_inpaint','mcs']
+
 scene:
   input:
-    rgb: 'data/sd_readingroom/color.png'
+    rgb: 'nvknaonldm'
+    rgbs: ['data/sd_readingroom/color.png','data/sd_readingroom/color.png'] # for sparse only
     resize_long_edge: 512
 
+  inpaint:
+    alpha_thres: 0.7
+
   outpaint:
+    sign: True
+    lvm_prompt: True
     outpaint_selections: ['Left','Right','Top','Bottom']
-    outpaint_extend_times: 0.45
-    seed: 746805015404516437
+    outpaint_extend_times: 0.5
+    seed: 16165035611626588888888
+  
+  reconstruction:
+    type: 'mdi'
+    keep_occlu: False
+    edge_filter_times: 0.1
 
   traj: 
     n_sample: 10
@@ -38,12 +58,12 @@ scene:
     traj_backward_ratio: 0.7
 
   gaussian:
-    opt_iters_per_frame: 512
+    opt_iters_per_frame: 256
   
   mcs:
-    steps: 10 # among 50 total steps
+    total_steps: 50
+    steps:  9 
     n_view: 8
     rect_w: 0.7
-    blur: False # first blurring rendering images
     gsopt_iters: 256
   

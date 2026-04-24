@@ -1,10 +1,11 @@
 from glob import glob
 from pipe.cfgs import load_cfg
-from pipe.sparse_recons import Pipeline
+from pipe.vistadream_sparse import Pipeline_Sparse
 
 base = f'data/bedroom'
 images = glob(f'{base}/*.png')
 
-cfg = load_cfg(f'pipe/cfgs/basic_sparse.yaml')
-vistadream = Pipeline(cfg)
-vistadream(images)
+cfg = load_cfg(f'pipe/cfgs/basic.yaml')
+cfg.scene.input.rgbs = images
+vistadream = Pipeline_Sparse(cfg)
+vistadream()

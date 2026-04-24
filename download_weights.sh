@@ -16,8 +16,9 @@ mv tools/Fooocus/models/prompt_expansion/fooocus_expansion/fooocus_expansion.bin
 
 # Depth Pro
 wget -P tools/DepthPro/checkpoints https://ml-site.cdn-apple.com/models/depth-pro/depth_pro.pt 
-# oneformer
-wget -P tools/OneFormer/checkpoints https://shi-labs.com/projects/oneformer/ade20k/coco_pretrain_1280x1280_150_16_dinat_l_oneformer_ade20k_160k.pth 
+# Depth Prior
+wget -P tools/DAAnyPrior/checkpoints https://huggingface.co/Rain729/Prior-Depth-Anything/resolve/main/depth_anything_v2_vitb.pth?download=true
+wget -P tools/DAAnyPrior/checkpoints https://huggingface.co/Rain729/Prior-Depth-Anything/resolve/main/prior_depth_anything_vitb.pth?download=true
 
 # stable diffusion - lcm
 # original SD1.5 ckpt will be automatically downloaded from https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5

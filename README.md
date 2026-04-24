@@ -11,6 +11,11 @@ This is the official PyTorch implementation of the following publication:
 
 
 ## 🔭 Introduction
+
+<p align="center">
+  <img src="data/assert/interface/interf.gif" alt="Interactive interface demo" width="90%">
+</p>
+
 <p align="center">
 <strong>TL;DR: VistaDream is a training-free framework to reconstruct a high-quality 3D scene from a single-view image.</strong>
 </p>
@@ -73,6 +78,10 @@ bash download_weights.sh
 ```
 The pretrained models of [LLaVA](https://github.com/haotian-liu/LLaVA) and [Stable Diffusion-1.5](https://github.com/CompVis/stable-diffusion) will be automatically downloaded from hugging face on the first running.
 
+## 🔦 Generate your own scene (Interface)
+Use ```vdplus``` conda environment, check [INSTALL.md](INSTALL.md).
+Vistadream support interactive scene generation show above, please refer to [INTERFACE.md](pipe/cfgs/INTERFACE.md).
+
 ## 🔦 Demo (Single-View Generation)
 Try VistaDream using the following commands:
 ```
@@ -83,11 +92,11 @@ Then, you should obtain:
 - ```data/sd_readingroom/video_rgb(dpt).mp4```: the rgb(dpt) renderings from the scene.
 
 ## 🔦 Demo (Sparse-View Generation)
-To use sparse views as input as [demo_here](https://github.com/WHU-USI3DV/VistaDream/issues/14), we need [Dust3r](https://github.com/naver/dust3r) to first reconstruct the input images to 3D as the scaffold (no zoom-out needed).
+To use sparse views as input as [demo_here](https://github.com/WHU-USI3DV/VistaDream/issues/14), we need [VGGT](https://github.com/facebookresearch/vggt) to first reconstruct the input images to 3D as the scaffold (no zoom-out needed).
 
-First download Dust3r [checkpoints](https://download.europe.naverlabs.com/ComputerVision/DUSt3R/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth) and place it at ```tools/Dust3r/checkpoints``` by the following command:
+First download Dust3r [checkpoints](https://huggingface.co/facebook/VGGT-1B/blob/main/model.pt) and place it at ```tools/VGGT/checkpoints``` by the following command:
 ```
-wget -P tools/Dust3r/checkpoints https://download.europe.naverlabs.com/ComputerVision/DUSt3R/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth
+wget -P tools/Dust3r/checkpoints https://huggingface.co/facebook/VGGT-1B/resolve/main/model.pt?download=true
 ```
 Then try VistaDream with sparse images as input using the following commands:
 ```
@@ -113,12 +122,11 @@ and feed the ```gf.ply``` to [SuperSplat](https://playcanvas.com/supersplat/edit
 - [x] Early check in generation.
 - [x] Support more types of camera trajectory. Please follow [Here](ops/trajs/TRAJECTORY.MD) to define your trajectory. An example is given in this [issue](https://github.com/WHU-USI3DV/VistaDream/issues/11).
 - [x] Support sparse-view-input (and no pose needed). An example is given in this [issue](https://github.com/WHU-USI3DV/VistaDream/issues/14).
-- [ ] Interactive Demo.
+- [x] Interactive Demo.
 
 ## 🔗 Related Projects
 We sincerely thank the excellent open-source projects:
 - [Fooocus](https://github.com/lllyasviel/Fooocus) for the wonderful inpainting quality;
 - [LLaVA](https://github.com/haotian-liu/LLaVA) for the wonderful image analysis and QA ability;
 - [Depth-Pro](https://github.com/apple/ml-depth-pro) for the wonderful monocular metric depth estimation accuracy;
-- [OneFormer](https://github.com/SHI-Labs/OneFormer) for the wonderful sky segmentation accuracy;
 - [StableDiffusion](https://github.com/CompVis/stable-diffusion) for the wonderful image generation/optimization ability.

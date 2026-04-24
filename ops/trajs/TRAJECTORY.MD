@@ -42,29 +42,3 @@ where each element in the list is a tuple, defined as ```(Camera, Target, Up)```
 
 - **Tips**: ```Traj_Base``` owns a fundamental attribute that you might need to generate trajectories: ```radius```, which approximates the radius of the scene (excluding the sky).
 
-### 3. Trajectory check
-
-If you want to verify whether the trajectory construction is correct, you can use the following code for checking, taking 
-class ```Rot``` in ```ops/trajs/rot.py``` as a reference: 
-```
-from ops.trajs.check import Base_Check_Traj
-# change to yours below
-from ops.trajs.rot import Rot
-
-rgb_fn = 'data/sd_readingroom/color.png'
-checkor = Base_Check_Traj(rgb_fn)
-checkor._fake_scene()
-
-# change Rot below to your class name
-trajector = Rot(checkor.fake_scene,nframe=100)
-
-checkor.trajs = trajector()
-trajector._visualize_traj(checkor.trajs) # open3d visualization
-checkor._render_video() # rendering check
-```
-Then you should obtain an Open3D window with trajectory visualization below and two rendering videos ```check_traj.video_rgb.mp4```
-and ```check_traj.video_dpt.mp4``` for check.
-
-<img src="../../data/assert/traj_visual.png" alt="Traj-visual" style="zoom:50%;">
-
-

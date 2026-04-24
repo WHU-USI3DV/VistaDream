@@ -10,10 +10,10 @@ We use an evironment with the following specifications, packages and dependencie
 - GeForce RTX 4090.
 
 ### Setup Instructions
-- Basic environment
+- Basic environment [we update packages in ```vdplus``` environment.]
 ```
 conda env create -f environment.yaml
-conda activate vistadream
+conda activate vdplus
 ```
 
 - Install Depth-Pro

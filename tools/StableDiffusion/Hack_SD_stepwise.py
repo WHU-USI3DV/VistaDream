@@ -1,5 +1,5 @@
 import torch
-from diffusers import LCMScheduler
+from diffusers import LCMScheduler,PNDMScheduler
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import *
 
 
@@ -36,7 +36,7 @@ class Hack_SDPipe_Stepwise(StableDiffusionPipeline):
         batch_size = 1
         device = self._execution_device
         
-        # 4. Prepare timesteps
+        # 4. Reset timesteps and current timestep of scheduler
         self.timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         self.extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -125,22 +125,41 @@ class Hack_SDPipe_Stepwise(StableDiffusionPipeline):
         # decode
         z = self.vae.post_quant_conv(latent)
         output = self.vae.decoder(z)
-        return output
+        return output.clip(-1,1)
 
-    def _solve_x0_full_step(self, latents, noise_pred, t):
-        self.alpha_t = torch.sqrt(self.scheduler.alphas_cumprod).to(t.device)
-        self.sigma_t = torch.sqrt(1-self.scheduler.alphas_cumprod).to(t.device)
-        a_t, s_t = self.alpha_t[t], self.sigma_t[t]
-        x0_latents = (latents - s_t * noise_pred) / a_t
-        x0 = self._decode(x0_latents)
-        return x0_latents, x0
-        
+    def _for_sd_denoise(
+            self,
+            samples: torch.Tensor,
+            timesteps: torch.IntTensor,
+            ) -> torch.Tensor:
+            # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
+            # Move the self.alphas_cumprod to device to avoid redundant CPU to GPU data movement
+            # for the subsequent add_noise calls
+            self.scheduler.alphas_cumprod = self.scheduler.alphas_cumprod.to(device=samples.device)
+            alphas_cumprod = self.scheduler.alphas_cumprod.to(dtype=samples.dtype)
+            timesteps = timesteps.to(samples.device)
+
+            sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5
+            sqrt_alpha_prod = sqrt_alpha_prod.flatten()
+            while len(sqrt_alpha_prod.shape) < len(samples.shape):
+                sqrt_alpha_prod = sqrt_alpha_prod.unsqueeze(-1)
+
+            sqrt_one_minus_alpha_prod = (1 - alphas_cumprod[timesteps]) ** 0.5
+            sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
+            while len(sqrt_one_minus_alpha_prod.shape) < len(samples.shape):
+                sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.unsqueeze(-1)
+            return sqrt_alpha_prod, sqrt_one_minus_alpha_prod
+
     def _solve_x0(self, latents, noise_pred, t):
-        x0_latents = self.scheduler.step(noise_pred, t.squeeze(), latents)
-        # note here must be a fake denoise
-        self.scheduler._step_index-=1
+        if self.use_lcm:
+            x0_latents = self.scheduler.step(noise_pred, t.squeeze(), latents)
+            x0_latents = x0_latents.denoised 
+            # note here must be a fake denoise
+            self.scheduler._step_index-=1
+        else:
+            sqrt_alpha_prod, sqrt_one_minus_alpha_prod = self._for_sd_denoise(latents,t)
+            x0_latents = (latents - sqrt_one_minus_alpha_prod * noise_pred) / sqrt_alpha_prod
         # results
-        x0_latents = x0_latents.denoised if self.use_lcm else x0_latents.pred_original_sample
         x0 = self._decode(x0_latents)
         return x0_latents, x0
 

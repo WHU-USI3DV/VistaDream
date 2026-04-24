@@ -1,6 +1,6 @@
 import numpy as np
 import open3d as o3d
-from ops.utils import dpt2xyz
+from ops.utils.utils import dpt2xyz
 
 class Traj_Base():
     def __init__(self, 

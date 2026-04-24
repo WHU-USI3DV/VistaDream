@@ -323,7 +323,6 @@ class Fooocus():
         if seed is None: self._seed_set()
         else: self._seed_set(seed,seed_random=False)
         self.image_number=image_number
-        print(self.image_seed)
         # conduct inpainting
         self._inpaint_parameters(outpaint_selections=outpaint_selections,
                                  outpaint_extend_times=outpaint_extend_times,
