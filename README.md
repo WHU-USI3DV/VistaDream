@@ -68,12 +68,12 @@ For complete installation instructions, please see [INSTALL.md](INSTALL.md).
 
 ## 🚅 Pretrained model
 VistaDream is training-free but utilizes pretrained models of several existing projects.
-To download pretrained models for [Fooocus](https://github.com/lllyasviel/Fooocus), [Depth-Pro](https://github.com/apple/ml-depth-pro), 
-[OneFormer](https://github.com/SHI-Labs/OneFormer), [SD-LCM](https://github.com/luosiallen/latent-consistency-model), run the following command:
+To download pretrained models for [Fooocus](https://github.com/lllyasviel/Fooocus), [Depth-Pro](https://github.com/apple/ml-depth-pro), [Prior-Depth-Anything](https://github.com/SpatialVision/Prior-Depth-Anything), [SD-LCM](https://github.com/luosiallen/latent-consistency-model), run the following command:
 ```
 bash download_weights.sh
 ```
-The pretrained models of [LLaVA](https://github.com/haotian-liu/LLaVA) and [Stable Diffusion-1.5](https://github.com/CompVis/stable-diffusion) will be automatically downloaded from hugging face on the first running.
+The pretrained models of [LLaVA](https://github.com/haotian-liu/LLaVA), 
+[MaskFormer](https://github.com/facebookresearch/maskformer), and [Stable Diffusion-1.5](https://github.com/CompVis/stable-diffusion) will be automatically downloaded from hugging face on the first running.
 
 ## 🔦 Generate your own scene (Interface)
 Use ```vdplus``` conda environment, check [INSTALL.md](INSTALL.md).
@@ -126,4 +126,5 @@ We sincerely thank the excellent open-source projects:
 - [Fooocus](https://github.com/lllyasviel/Fooocus) for the wonderful inpainting quality;
 - [LLaVA](https://github.com/haotian-liu/LLaVA) for the wonderful image analysis and QA ability;
 - [Depth-Pro](https://github.com/apple/ml-depth-pro) for the wonderful monocular metric depth estimation accuracy;
+- [Prior-Depth-Anything](https://github.com/SpatialVision/Prior-Depth-Anything) for the wonderful monocular metric depth completion accuracy;
 - [StableDiffusion](https://github.com/CompVis/stable-diffusion) for the wonderful image generation/optimization ability.
