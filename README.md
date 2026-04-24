@@ -91,9 +91,9 @@ Then, you should obtain:
 ## 🔦 Demo (Sparse-View Generation)
 To use sparse views as input as [demo_here](https://github.com/WHU-USI3DV/VistaDream/issues/14), we need [VGGT](https://github.com/facebookresearch/vggt) to first reconstruct the input images to 3D as the scaffold (no zoom-out needed).
 
-First download Dust3r [checkpoints](https://huggingface.co/facebook/VGGT-1B/blob/main/model.pt) and place it at ```tools/VGGT/checkpoints``` by the following command:
+First download [checkpoints](https://huggingface.co/facebook/VGGT-1B/blob/main/model.pt) and place it at ```tools/VGGT/checkpoints``` by the following command:
 ```
-wget -P tools/Dust3r/checkpoints https://huggingface.co/facebook/VGGT-1B/resolve/main/model.pt?download=true
+wget -P tools/VGGT/checkpoints https://huggingface.co/facebook/VGGT-1B/resolve/main/model.pt?download=true
 ```
 Then try VistaDream with sparse images as input using the following commands:
 ```
