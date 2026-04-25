@@ -1,3 +1,4 @@
+import os
 # First Stage
 from ops.legos.llava import Llava
 from ops.legos.rgbipt import RGB_Inpaint_Tool
@@ -22,7 +23,7 @@ class Load_Tools_Phase():
         # load refiner
         if ('mcs' in preloads) and mcs:
             self._load_mcs_()
-        
+
     def _load_llava_(self):
         offline = False
         try:
@@ -53,11 +54,16 @@ class Load_Tools_Phase():
             return None
 
     def _load_fooocus_(self):
+        # in case of corrupted fooocus ckpt
+        fooocus_path = f'{self.cfg.model.paint.fooocus.ckpts}/checkpoints/juggernautXL_v8Rundiffusion.safetensors'
+        if not os.path.exists(fooocus_path):
+            if os.path.exists(fooocus_path + '.corrupted'):
+                os.system(f'mv {fooocus_path}.corrupted {fooocus_path}')
         self.rgb_inpaint = RGB_Inpaint_Tool(self.cfg)
-        
+
     def _load_dpt_inpaintor_(self):
         self.dpt_inpaint = Depth_Inpaint_Tool(self.cfg,device='cpu')
-    
+
     def _load_mcs_(self):
         self.mcs_refiner = HackSD_MCS(
             device='cpu',
@@ -66,6 +72,3 @@ class Load_Tools_Phase():
             total_steps = self.cfg.scene.mcs.total_steps,
             sd_ckpt = self.cfg.model.optimize.sd,
             lcm_ckpt = self.cfg.model.optimize.lcm)
-    
-
-

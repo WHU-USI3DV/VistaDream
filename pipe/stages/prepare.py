@@ -6,7 +6,7 @@ import os
 import cv2
 import numpy as np
 from PIL import Image
-        
+
 class Prepare_Phase():
     def __init__(self,cfg) -> None:
         self.cfg = cfg
@@ -18,8 +18,10 @@ class Prepare_Phase():
     def _resize_input(self,fn):
         resize_long_edge = int(self.cfg.scene.input.resize_long_edge)
         print(f'[Preprocess...] Resize the long edge of input image to {resize_long_edge}.')
-        spl = str.rfind(fn,'.')
-        backup_fn = fn[:spl] + '.original' + fn[spl:]
+        spl = str.rfind(fn,'/')
+        fatr,name = fn[:spl],fn[spl+1:]
+        os.makedirs(f'{fatr}/bkup',exist_ok=True)
+        backup_fn = f'{fatr}/bkup/{name[:-4]}.original{name[-4:]}'
         rgb = Image.open(fn)
         rgb.save(backup_fn) # back up original image 
         rgb = np.array(rgb)[:,:,:3]/255.
@@ -39,7 +41,3 @@ class Prepare_Phase():
         rgb_fn = self.cfg.scene.input.rgb
         # resize input 
         self._resize_input(rgb_fn)
-
-    
-    
-    

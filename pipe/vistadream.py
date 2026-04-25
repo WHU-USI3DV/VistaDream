@@ -26,10 +26,10 @@ class Pipeline():
         if os.path.exists(f'{temp_dir}/scene.coarse.pth'):
             self.cfg.tools.preload = ['mcs']
             self.tools = Load_Tools_Phase(self.cfg,mcs=True)
-            scene = torch.load(f'{temp_dir}/scene.coarse.pth')
+            scene = torch.load(f'{temp_dir}/scene.coarse.pth',weights_only=False)
         else:
             self.cfg.tools.preload = ['llava','rgb_inpaint','dpt_inpaint','mcs']
-            self.tools = Load_Tools_Phase(self.cfg)
+            self.tools = Load_Tools_Phase(self.cfg,mcs=True)
             # scaffold stage
             rgb = Image.open(rgb_fn)
             scene = Scaffold_Phase(self.cfg,self.tools)(rgb)

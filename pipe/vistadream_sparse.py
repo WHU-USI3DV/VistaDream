@@ -16,7 +16,7 @@ from pipe.stages.xmcsrefine import MCS_Phase
 from ops.gs.basic import Gaussian_Scene,Frame
 from ops.gs.train import GS_Train_Tool
 
-        
+
 class Pipeline_Sparse():
     def __init__(self,cfg) -> None:
         cfg.scene.traj.traj_type = 'interp'
@@ -24,17 +24,13 @@ class Pipeline_Sparse():
         self.checkor = Check()
         self.prepare = Prepare_Phase(self.cfg)
 
-    def _sparse_scaffold_(self,rgbs_fn):
+    def _sparse_scaffold_(self,rgbs_fn,prompt='A beautiful scene with clear objects and coherent layouts.'):
         ''' We need to load vggt firstly. '''
-        rgbs = [np.array(Image.open(rgb_fn))[...,0:3] for rgb_fn in rgbs_fn]
+        rgbs = [np.array(Image.open(rgb_fn))[...,0:3]/255. for rgb_fn in rgbs_fn]
         # load VGGT
         vggt = VGGT_Tool(device='cuda',ckpt=self.cfg.model.dpt.vggt.ckpt)
         # estimate
         dpts,confs,intrinsics,extrinsics = vggt(images=rgbs)
-        # describe
-        scaffold_tool = Scaffold_Phase(self.cfg,self.tools)
-        scaffold_tool._lvm_prompt_(rgbs[0])
-        prompt = scaffold_tool.prompt
         # build scene
         scene = Gaussian_Scene(self.cfg)
         # add frame by frame       
@@ -53,6 +49,8 @@ class Pipeline_Sparse():
             # set others
             frame.rgb = rgb
             frame.dpt = dpt
+            frame.keep = True
+            frame.anchor = True
             frame.prompt = prompt
             # process sky
             if len(scene.frames)<0: self.tools.dpt_inpaint.sky._set_sky_depth_(frame)
@@ -60,27 +58,39 @@ class Pipeline_Sparse():
             # add to scene
             scene._add_trainable_frame(frame)
             scene._require_grad_(True)
-            GS_Train_Tool(scene,iters=self.cfg.scene.gaussian.opt_iters_per_frame)(scene.frames)
+            scene = GS_Train_Tool(scene,iters=self.cfg.scene.gaussian.opt_iters_per_frame)(scene.frames)
         # get dense trajectory
+        # describe
+        scaffold_tool = Scaffold_Phase(self.cfg,self.tools)
         scene = scaffold_tool._generate_traj(scene)
         return scene
 
     def __call__(self):
         rgbs_fn = self.cfg.scene.input.rgbs
         temp_dir = rgbs_fn[0][:str.rfind(rgbs_fn[0],'/')]
-        # prepare stage
-        for rgb_fn in rgbs_fn:
-            self.prepare._resize_input(rgb_fn)
         # build coarse scene
         if os.path.exists(f'{temp_dir}/scene.coarse.pth'):
             self.cfg.tools.preload = ['mcs']
-            self.tools = Load_Tools_Phase(self.cfg)
-            scene = torch.load(f'{temp_dir}/scene.coarse.pth')
+            self.tools = Load_Tools_Phase(self.cfg,mcs=True)
+            scene = torch.load(f'{temp_dir}/scene.coarse.pth',weights_only=False)
         else:
-            self.cfg.tools.preload = ['llava','rgb_inpaint','dpt_inpaint','mcs']
+            # prepare stage
+            for rgb_fn in rgbs_fn:
+                self.prepare._resize_input(rgb_fn)
+            # first generate prompt to avoid OOM.
+            self.cfg.tools.preload = ['llava']
             self.tools = Load_Tools_Phase(self.cfg)
+            scaffold_tool = Scaffold_Phase(self.cfg,self.tools)
+            scaffold_tool._lvm_prompt_(np.array(Image.open(rgbs_fn[0]))[...,0:3])
+            prompt = scaffold_tool.prompt
+            print('[Prompt]: ', prompt)
+            self.tools = None
+            torch.cuda.empty_cache()
+            # others
+            self.cfg.tools.preload = ['rgb_inpaint','dpt_inpaint','mcs']
+            self.tools = Load_Tools_Phase(self.cfg,mcs=True)
             # scaffold stage
-            scene = self._sparse_scaffold_(rgbs_fn)
+            scene = self._sparse_scaffold_(rgbs_fn,prompt=prompt)
             torch.cuda.empty_cache()
             # coarse stage
             scene = WarpExtend_Phase(self.cfg,self.tools)(scene)
@@ -90,8 +100,3 @@ class Pipeline_Sparse():
         scene = MCS_Phase(self.cfg,self.tools,scene,device='cuda')()
         torch.save(scene,f'{temp_dir}/scene.refine.pth')
         self.checkor._render_video(scene,save_dir=f'{temp_dir}/refine.')
-
-
-    
-    
-    
