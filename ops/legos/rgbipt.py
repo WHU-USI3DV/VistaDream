@@ -12,10 +12,10 @@ class RGB_Inpaint_Tool():
     def __init__(self,cfg) -> None:
         self.cfg = cfg
         self._load_model()
-        
+
     def _load_model(self):
         self.fooocus = Fooocus_Tool(fooocus_ckpts=self.cfg.model.paint.fooocus.ckpts)
-        
+
     def __call__(self, frame:Frame, outpaint_selections=[], outpaint_extend_times=0.0):
         '''
         Must be Frame type
@@ -43,8 +43,8 @@ class RGB_Inpaint_Tool():
             large_H, large_W = fooocus_result.shape[0:2]
             if frame.intrinsic is not None:
                 # NO CHANGE TO FOCAL
-                frame.intrinsic[0,-1] = large_W//2 
-                frame.intrinsic[1,-1] = large_H//2 
+                frame.intrinsic[0,-1] = large_W//2
+                frame.intrinsic[1,-1] = large_H//2
             # begin sample pixel
             frame.H = large_H
             frame.W = large_W
@@ -55,4 +55,3 @@ class RGB_Inpaint_Tool():
             frame.inpaint = inpaint > 0.5
         frame.rgb = fooocus_result
         return frame
-    

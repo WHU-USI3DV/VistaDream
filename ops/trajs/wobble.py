@@ -9,13 +9,13 @@ class Wobble(Traj_Base):
         self.look_at_ratio = 0.5
         self.forward_ratio = self.scene.traj_forward_ratio
         self.backward_ratio = self.scene.traj_backward_ratio
-         
+
     def camera_target_up(self):
         # get positions
         t = np.linspace(0, 1, self.nframe)
         r = np.sin(2 * np.pi * t) * self.radius * self.rot_ratio
         # rotation angles at each frame
-        theta = 2 * np.pi * t * self.nframe 
+        theta = 2 * np.pi * t * self.nframe
         # try not to change y (up-down for floor and sky)
         x = r * np.cos(theta)
         y = -r * np.sin(theta) * 0.3

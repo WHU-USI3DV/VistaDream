@@ -4,18 +4,18 @@ import scipy.interpolate
 from .basic import Traj_Base
 
 class Interp(Traj_Base):
-    
+
     def __init__(self, scene=None, nframe=100):
         super().__init__(scene, nframe)
         # special
         self.spline_degree=5
         self.smoothness=.03
         self.rot_weight=.1
-        
+
     def normalize(self, x):
         """Normalization helper function."""
         return x / np.linalg.norm(x)
-    
+
     def viewmatrix(self, lookdir, up, position):
         """Construct lookat view matrix."""
         vec2 = self.normalize(lookdir)
@@ -81,7 +81,7 @@ class Interp(Traj_Base):
                 anchor_frames.append(frame)
         N = len(anchor_frames)
         if N<2: return np.eye(4)[None].repeat(self.nframe,axis=0)
-        
+
         # avoid adjactent same items
         bgn = 1 if anchor_frames[1].extrinsic[0,0] > 0.99 and \
                    anchor_frames[1].extrinsic[1,1] > 0.99 and \
@@ -89,7 +89,7 @@ class Interp(Traj_Base):
         anchor_frames = anchor_frames[bgn:]
         N = len(anchor_frames)
         if N<2: return np.eye(4)[None].repeat(self.nframe,axis=0)
-        
+
         for i in range(N):
             frame = anchor_frames[i]
             poses.append(np.linalg.inv(frame.extrinsic[None]))

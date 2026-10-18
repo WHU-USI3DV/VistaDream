@@ -15,7 +15,7 @@ class RGB_Loss():
         self.ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to('cuda')
         self.w_ssim = w_ssim
         self.w_lpips = w_lpips
-        
+
     def __call__(self,pr,gt,valid_mask=None):
         pr = torch.nan_to_num(pr)
         gt = torch.nan_to_num(gt)
@@ -35,18 +35,18 @@ class Scale_Loss():
     def __init__(self,optimize_frames):
         self.optimize_frames = optimize_frames
         self.basic = torch.mean(torch.cat([gf.scale for gf in self.optimize_frames]).detach())
-    
+
     def __call__(self):
         # do not derive too much
         scales = torch.cat([gf.scale for gf in self.optimize_frames])
         scales_disp = (scales - self.basic)**2
         scales_loss = torch.mean(scales_disp)
-        return scales_loss    
-    
+        return scales_loss
+
 class Smooth_Loss():
     def __init__(self):
-        pass    
-    
+        pass
+
     def _knn_idx_(self,xyz):
         # query and database
         query_idx = np.random.permutation(len(xyz))[0:2000]
@@ -63,7 +63,7 @@ class Smooth_Loss():
         qbd = torch.argsort(qbd,dim=-1)[...,0:20]
         query_knn_idx = bases_idx[qbd.reshape(-1)].reshape(len(query_idx),-1)
         return query_idx,query_knn_idx
-    
+
     def _svd_(self,center,knns):
         # center: n*3, knns: n*k*3
         knns_center = knns - center[:,None,:]
@@ -71,8 +71,8 @@ class Smooth_Loss():
         # torch svd
         S = torch.linalg.svdvals(knns_covera)
         S = torch.amin(S,dim=-1)
-        return S     
-    
+        return S
+
     def _xyz_smooth_(self,xyz):
         query_idx, query_knn_idx = self._knn_idx_(xyz)
         query_xyz, query_knn_xyz = xyz[query_idx],\
@@ -80,7 +80,7 @@ class Smooth_Loss():
         S = self._svd_(query_xyz,query_knn_xyz)
         l = torch.mean(torch.exp(S)-1)
         return l
-    
+
     def __call__(self, optimize_frames):
         xyz = torch.cat([gf.xyz for gf in optimize_frames])
         l = self._xyz_smooth_(xyz)
@@ -112,7 +112,7 @@ class GS_Train_Tool():
         self.rgb_lossfunc = RGB_Loss(w_ssim=0.2)
         self.scale_lossfunc = Scale_Loss(self.optimize_frames)
         self.smooth_lossfunc = Smooth_Loss()
-    
+
     def _init_optimizer(self):
         self.optimize_frames = [gf for gf in self.GS.gaussian_frames if gf.rgb.requires_grad]
         # following https://github.com/pointrix-project/msplat
@@ -122,16 +122,16 @@ class GS_Train_Tool():
             {'params': [gf.scale for gf in self.optimize_frames],    'lr': self.scale_lr},
             {'params': [gf.opacity for gf in self.optimize_frames],  'lr': self.opacity_lr},
             {'params': [gf.rotation for gf in self.optimize_frames], 'lr': self.rotation_lr}
-        ]) 
+        ])
 
     def _render(self,frame):
         rgb,dpt,alpha = self.GS._render_RGBD(frame)
         return rgb,dpt,alpha
-    
+
     def _to_cuda(self,tensor):
         tensor = torch.from_numpy(tensor.astype(np.float32)).to('cuda')
         return tensor
-    
+
     def _get_rgb_loss_(self,frame,only_inpainted_area=True):
         # render
         render_rgb,_,_=self._render(frame)
@@ -156,13 +156,13 @@ class GS_Train_Tool():
         # calculate loss
         loss_rgb = self.rgb_lossfunc(render_rgb,anchor_rgb,valid_mask=valid_mask)
         return loss_rgb
-    
+
     def _get_scale_loss_(self):
         return self.scale_lossfunc()
-    
+
     def _get_smooth_loss_(self):
         return self.smooth_lossfunc(self.optimize_frames)
-    
+
     def __call__(self,target_frames=None,only_inpainted_area=True,show_progress=True,no_grad_after=True):
         target_frames = self.GS.frames if target_frames is None else target_frames
         if show_progress:
@@ -177,13 +177,12 @@ class GS_Train_Tool():
             loss_rgb = self._get_rgb_loss_(frame,only_inpainted_area)
             # supervise the scale not to be too large
             loss_scale = self._get_scale_loss_()
-            # optimization 
+            # optimization
             loss = loss_rgb + loss_scale
-            loss.backward()  
+            loss.backward()
             self.optimizer.step()
             self.optimizer.zero_grad()
         refined_scene = self.GS
         if no_grad_after:
             refined_scene._require_grad_(False)
         return refined_scene
-    

@@ -20,15 +20,23 @@ from ops.trajs import _generate_trajectory
 class Pipeline():
     def __init__(self,cfg,traj_type='spline',load_tool=True) -> None:
         self.cfg = cfg
+        self.scene = None
+        self.tools = None
         self.checkor = Check()
         self.traj_type = traj_type
         self.cfg.scene.traj.traj_type = traj_type
         if load_tool:
-            self.tools = Load_Tools_Phase(self.cfg,mcs=True)
+            # MCS is loaded only when refinement starts. Preloading it alongside
+            # Fooocus and depth models creates a large, unnecessary CPU-RAM peak.
+            self.tools = Load_Tools_Phase(self.cfg,mcs=False)
+
+    def _ensure_tools(self):
+        if self.tools is None:
+            self.tools = Load_Tools_Phase(self.cfg, mcs=False)
 
     def _resize_input(self,rgb):
         # INPUT IS PIL IMAGE
-        rgb = np.array(rgb)[:,:,:3]/255.
+        rgb = np.asarray(rgb.convert("RGB"), dtype=np.float32) / 255.
         H,W = rgb.shape[0:2]
         resize_long_edge = int(self.cfg.scene.input.resize_long_edge)
         if H>W:
@@ -41,10 +49,11 @@ class Pipeline():
         return rgb
 
     def _build_scaffold_(self,rgb,user_prompt=None):
+        self._ensure_tools()
         rgb = self._resize_input(rgb)
         self.scene = Scaffold_Phase(self.cfg,self.tools)(rgb,user_prompt=user_prompt)
         self.scene.traj_type=self.traj_type
-    
+
     # Manually Selected Trajectory
     def _interactive_render(self,extrinsic):
         # rendering partial images
@@ -67,14 +76,39 @@ class Pipeline():
         self.scene.dense_trajs = _generate_trajectory(self.cfg,self.scene)
         rgb = (self.scene.frames[-1].rgb*255).clip(0,255).astype(np.uint8)
         return rgb
-        
-    def _interactive_MCS_Refinement(self,steps=None,views=None,weight=None):
+
+    def _interactive_MCS_Refinement(
+        self,
+        steps=None,
+        views=None,
+        weight=None,
+        gsopt_iters=None,
+    ):
         self.tools._load_mcs_()
-        steps = steps if steps is not None else self.cfg.scene.mcs.mcs_iterations
-        views = views if views is not None else self.cfg.scene.mcs.mcs_n_view
-        weight = weight if weight is not None else self.cfg.scene.mcs.mcs_rect_w
+        steps = steps if steps is not None else self.cfg.scene.mcs.steps
+        views = views if views is not None else self.cfg.scene.mcs.n_view
+        weight = weight if weight is not None else self.cfg.scene.mcs.rect_w
+        gsopt_iters = (
+            int(gsopt_iters)
+            if gsopt_iters is not None
+            else int(self.cfg.scene.mcs.gsopt_iters)
+        )
+        self.cfg.scene.mcs.gsopt_iters = gsopt_iters
         from pipe.stages.xmcsrefine import MCS_Phase
-        self.scene = MCS_Phase(self.cfg,self.tools,self.scene,'cuda',steps,views,weight)()
+        try:
+            self.scene = MCS_Phase(
+                self.cfg,
+                self.tools,
+                self.scene,
+                'cuda',
+                steps,
+                views,
+                weight,
+                gsopt_iters,
+                offload_model=False,
+            )()
+        finally:
+            self.tools._unload_mcs_()
 
     def _traj_refine_(self):
         # already have several frames, refine the trajectory by warp and inpaint
@@ -85,48 +119,59 @@ class Pipeline():
     def _e2e_coarse_scene(self,rgb,user_prompt=None):
         # scaffold stage
         self._build_scaffold_(rgb,user_prompt=user_prompt)
-        self.scene.traj_type = self.cfg.scene.traj.traj_type
+        self.scene.traj_type = "spiral"
+        self.scene.dense_trajs = _generate_trajectory(self.cfg, self.scene)
         # coarse stage
         self.scene = WarpExtend_Phase(self.cfg,self.tools)(self.scene)
 
     def _e2e_MCS_Refinement(self):
         self.tools._load_mcs_()
         from pipe.stages.xmcsrefine import MCS_Phase
-        self.scene = MCS_Phase(self.cfg,self.tools,self.scene,'cuda')()
+        try:
+            self.scene = MCS_Phase(
+                self.cfg,
+                self.tools,
+                self.scene,
+                'cuda',
+                offload_model=False,
+            )()
+        finally:
+            self.tools._unload_mcs_()
 
 # ------------------------------------ Utils -----------------------------------------
 
 def get_extrinsic(camera_position,camera_rotation):
-    t = np.array(camera_position)
-    euler = np.array(camera_rotation)
+    t = np.asarray(camera_position, dtype=np.float64)
+    euler = np.asarray(camera_rotation, dtype=np.float64)
     cx = np.cos(euler[0])
     sx = np.sin(euler[0])
     cy = np.cos(euler[1])
     sy = np.sin(euler[1])
     cz = np.cos(euler[2])
     sz = np.sin(euler[2])
-    R = np.array([
-        cy * cz + sy * sx * sz,
-        -cy * sz + sy * sx * cz,
-        sy * cx,
-        cx * sz,
-        cx * cz,
-        -sx,
-        -sy * cz + cy * sx * sz,
-        sy * sz + cy * sx * cz,
-        cy * cx
+    Rx = np.array([
+        [1, 0, 0],
+        [0, cx, -sx],
+        [0, sx, cx],
     ])
-    view_mtx = np.array([
-        [R[0], R[1], R[2], 0],
-        [R[3], R[4], R[5], 0],
-        [R[6], R[7], R[8], 0],
-        [
-            -t[0] * R[0] - t[1] * R[3] - t[2] * R[6],
-            -t[0] * R[1] - t[1] * R[4] - t[2] * R[7],
-            -t[0] * R[2] - t[1] * R[5] - t[2] * R[8],
-            1
-        ]
-    ]).T
+    Ry = np.array([
+        [cy, 0, sy],
+        [0, 1, 0],
+        [-sy, 0, cy],
+    ])
+    Rz = np.array([
+        [cz, -sz, 0],
+        [sz, cz, 0],
+        [0, 0, 1],
+    ])
+
+    # The viewer serializes its quaternion with the standard XYZ Euler
+    # decomposition, whose column-vector rotation is Rz @ Ry @ Rx.
+    camera_to_world_rotation = Rz @ Ry @ Rx
+    world_to_camera_rotation = camera_to_world_rotation.T
+    view_mtx = np.eye(4, dtype=np.float64)
+    view_mtx[:3, :3] = world_to_camera_rotation
+    view_mtx[:3, 3] = -world_to_camera_rotation @ t
     return view_mtx
 
 def save_splat(scene,SPLAT_PATH):
@@ -136,24 +181,24 @@ def save_splat(scene,SPLAT_PATH):
     scale     = torch.cat([gf.scale.reshape(-1,3) for gf in scene.gaussian_frames],dim=0)
     opacity   = torch.cat([gf.opacity.reshape(-1) for gf in scene.gaussian_frames],dim=0)
     rotation  = torch.cat([gf.rotation.reshape(-1,4) for gf in scene.gaussian_frames],dim=0)
-    
+
     # 2. convert it to right range
     rgb = torch.sigmoid(rgb)
     scale = torch.exp(scale)
     opacity = torch.sigmoid(opacity)
     rgb_opacity = torch.cat((rgb,opacity[:,None]),dim=1)
-    
+
     xyz = xyz.detach().cpu().numpy()
     scale = scale.detach().cpu().numpy()
     rgb_opacity = rgb_opacity.detach().cpu().numpy()
     rotation = rotation.detach().cpu().numpy()
-    
+
     select = np.random.permutation(len(xyz))[0:150000]
     xyz = xyz[select]
     scale = scale[select]*1.5
     rotation = rotation[select]
     rgb_opacity = rgb_opacity[select]
-    
+
     with open(SPLAT_PATH, "wb") as f:
         for p, s, c, r in zip(xyz,scale,rgb_opacity,rotation):
             f.write(p.astype(np.float32).tobytes())

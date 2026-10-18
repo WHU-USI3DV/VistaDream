@@ -1,137 +1,92 @@
-<h2> 
-<a href="https://vistadream-project-page.github.io/" target="_blank">VistaDream: Sampling multiview consistent images for single-view scene reconstruction</a>
-</h2>
+# VistaDreamer — Interactive Reconstruction
 
-This is the official PyTorch implementation of the following publication:
-
-> **VistaDream: Sampling multiview consistent images for single-view scene reconstruction**<br/>
-> [Haiping Wang](https://hpwang-whu.github.io/), [Yuan Liu](https://liuyuan-pal.github.io/), [Ziwei Liu](https://liuziwei7.github.io/), [Wenping Wang](https://www.cs.hku.hk/people/academic-staff/wenping), [Zhen Dong](https://dongzhenwhu.github.io/index.html), [Bisheng Yang](https://3s.whu.edu.cn/info/1025/1415.htm)<br/>
-> *ICCV 2025*<br/>
-> [**Paper**](https://arxiv.org/abs/2410.16892) | [**Project-page**(with Interactive DEMOs)](https://vistadream-project-page.github.io/) 
+> **VistaDreamer:  Zero-shot Single-view Scene Reconstruction by Multi-view Consistency Sampling**<br/>
+> [Haiping Wang](https://hpwang-whu.github.io/), [Yuan Liu](https://liuyuan-pal.github.io/), [Ziwei Liu](https://liuziwei7.github.io/), [Yulan Guo](https://www.yulanguo.cn/), [Yu-Shen Liu](https://yushen-liu.github.io/), [Wenping Wang](https://www.cs.hku.hk/people/academic-staff/wenping), [Zhen Dong](https://dongzhenwhu.github.io/index.html), [Bisheng Yang](https://3s.whu.edu.cn/info/1025/1415.htm)<br/>
+> *TPAMI 2026*<br/>
 
 
-## 🔭 Introduction
+An INTERFACE-only release of VistaDreamer.
 
-<p align="center">
-  <img src="data/assert/interface/interf.gif" alt="Interactive interface demo" width="90%">
-</p>
+This release reconstructs and refines a Gaussian scene from one image through a
+Gradio interface. **MoGe-3** estimates the scaffold's metric depth and camera
+intrinsics; **LingBot-Depth** completes rendered depth for newly inpainted views,
+preserving valid known depth. Fooocus handles RGB outpainting/inpainting,
+Mask2Former segments sky, and Stable Diffusion 1.5 with LCM-LoRA provides MCS
+refinement. This is an updated depth backend, rather than the original paper's
+exact model configuration.
 
-<p align="center">
-<strong>TL;DR: VistaDream is a training-free framework to reconstruct a high-quality 3D scene from a single-view image.</strong>
-</p>
+## Work with Agents
+To avoid issues caused by installation errors or version conflicts, we strongly recommend using an agent such as Codex to handle the environment setup process. Likewise, if you have previously installed VistaDream, we recommend asking the agent to replace the depth estimation module with MoGe3 and the depth completion module with Lingbot-Depth, which can significantly improve performance.
 
-<table style="width:100%;">
-  <tr>
-    <td style="text-align:center; vertical-align:middle;">
-      <img src="data/assert/victorian.rgb.png" alt="Image" style="height:200px;">
-    </td>
-    <td style="text-align:center; vertical-align:middle;">
-      <img src="data/assert/victorian.rgb.gif" alt="RGB GIF" style="height:200px;">
-    </td>
-    <td style="text-align:center; vertical-align:middle;">
-      <img src="data/assert/victorian.dpt.gif" alt="Depth GIF" style="height:200px;">
-    </td>
-  </tr>
-  <tr>
-    <td style="text-align:center;">Input Image</td>
-    <td style="text-align:center;">RGBs of the reconstructed scene</td>
-    <td style="text-align:center;">Depths of the reconstructed scene</td>
-  </tr>
-  <tr>
-    <td colspan="3" style="text-align:center;">
-      More results and interactive demos are provided in the 
-      <a href="https://vistadream-project-page.github.io/" target="_blank">Project Page</a>.
-    </td>
-  </tr>
-</table>
+## Install and launch
 
-<p align="justify">
-  <strong>Abstract:</strong> In this paper, we propose VistaDream a novel framework to reconstruct a 3D scene from a single-view image.Recent diffusion models enable generating high-quality novel-view images from a single-view input image. 
-  Most existing methods only concentrate on building the consistency between the input image and the generated images while losing the consistency between the generated images.
-  VistaDream addresses this problem by a two-stage pipeline.
-  In the first stage, VistaDream begins with building a global coarse 3D scaffold by zooming out a little step with outpainted boundaries and an estimated depth map. Then, on this global scaffold, we use iterative diffusion-based RGB-D inpainting to generate novel-view images to inpaint the holes of the scaffold.
-  In the second stage, we further enhance the consistency between the generated novel-view images by a novel training-free Multi-view Consistency Sampling (MCS) that introduces multi-view consistency constraints in the reverse sampling process of diffusion models.
-  Experimental results demonstrate that without training or fine-tuning existing diffusion models, VistaDream achieves consistent and high-quality novel view synthesis using just single-view images and outperforms baseline methods by a large margin.
-</p>
+Linux x86_64, an NVIDIA CUDA GPU (tested on 4090 and 5090), and Conda/Miniforge are required. The supplied
+environment uses Python 3.10, PyTorch 2.7.1 and CUDA 12.8. See
+[INSTALL.md](INSTALL.md) for compiler setup and verification.
 
-## 🆕 News
-- 2026-10-18: The journal version of VistaDream has been accepted by IEEE TPAMI. See [`moge3-lbd`](https://github.com/WHU-USI3DV/VistaDream/tree/moge3-lbd) branch.
-- 2025-06-26: VistaDream is accepted by ICCV 2025!
-- 2024-10-23: Code, [[project page]](https://vistadream-project-page.github.io/), and [[arXiv paper]](https://arxiv.org/abs/2410.16892) are aviliable.
-
-## 💻  Recommended installation and depth-model upgrade !
-
-- VistaDream depends on several GPU, native, and third-party packages. To avoid installation errors and version conflicts, we strongly recommend using Codex or another coding agent to create the environment step by step, verify each dependency, and record any platform-specific fixes.
-
-- If you have already installed the original VistaDream environment, you can ask an agent to update the depth modules, for instance, using MoGe-3 for depth estimation and LingBot-Depth for depth completion. This upgrade provides a substantial improvement in reconstruction quality. The corresponding interactive interface is available in the [`moge3-lbd`](https://github.com/WHU-USI3DV/VistaDream/tree/moge3-lbd) branch for reference.
-
-## 💻 Requirements
-The code has been tested on:
-- Ubuntu 20.04
-- 1 * GeForce RTX 4090.
-
-## 🔧 Installation
-For complete installation instructions, please see [INSTALL.md](INSTALL.md).
-
-## 🚅 Pretrained model
-VistaDream is training-free but utilizes pretrained models of several existing projects.
-To download pretrained models for [Fooocus](https://github.com/lllyasviel/Fooocus), [Depth-Pro](https://github.com/apple/ml-depth-pro), [Prior-Depth-Anything](https://github.com/SpatialVision/Prior-Depth-Anything), [SD-LCM](https://github.com/luosiallen/latent-consistency-model), run the following command:
-```
+```bash
+conda env create -f environment.yaml
+conda activate vdplus
+bash scripts/install_runtime.sh
 bash download_weights.sh
+python INTERFACE.py
 ```
-The pretrained models of [LLaVA](https://github.com/haotian-liu/LLaVA), 
-[MaskFormer](https://github.com/facebookresearch/maskformer), and [Stable Diffusion-1.5](https://github.com/CompVis/stable-diffusion) will be automatically downloaded from hugging face on the first running.
 
-## 🔦 Generate your own scene (Interface)
-Use ```vdplus``` conda environment, check [INSTALL.md](INSTALL.md).
-Vistadream support interactive scene generation show above, please refer to [INTERFACE.md](pipe/cfgs/INTERFACE.md).
+Open `http://127.0.0.1:7860`. Models load on the first reconstruction, so launching
+the interface alone does not download weights. The depth model code and weights
+are pinned to specific revisions. LLaVA captioning is disabled by default; provide
+a scene prompt or leave it blank for a default prompt.
 
-## 🔦 Demo (Single-View Generation)
-Try VistaDream using the following commands:
-```
-python demo.py
-```
-Then, you should obtain:
-- ```data/sd_readingroom/scene.pth```: the generated gaussian field;
-- ```data/sd_readingroom/video_rgb(dpt).mp4```: the rgb(dpt) renderings from the scene.
+## Workflow
 
-## 🔦 Demo (Sparse-View Generation)
-To use sparse views as input as [demo_here](https://github.com/WHU-USI3DV/VistaDream/issues/14), we need [VGGT](https://github.com/facebookresearch/vggt) to first reconstruct the input images to 3D as the scaffold (no zoom-out needed).
+1. Upload an image, enter an optional scene prompt, set the seed, and click **Build Scaffold**.
+2. Move the camera in **GS-Viewer**. Click the viewer to focus it; drag to orbit,
+   right/middle-drag to pan, and scroll to zoom. Use WASD to move, Space/C for
+   vertical movement, and Shift to accelerate.
+3. Use **Preview the view**, then **Inpaint the view** to add it. Keep the anchor
+   checkbox enabled for camera views you want in the final trajectory.
+   **Re-select the view** undoes the last added frame.
+4. Select a few anchor views, then click **Generate a coarse scene** to fill the
+   trajectory. Click **Refine the scene by MCS** for optional refinement.
+5. Use **Rendering RGB and Depth videos** to export the current saved result.
 
-First download [checkpoints](https://huggingface.co/facebook/VGGT-1B/blob/main/model.pt) and place it at ```tools/VGGT/checkpoints``` by the following command:
-```
-wget -P tools/VGGT/checkpoints https://huggingface.co/facebook/VGGT-1B/resolve/main/model.pt?download=true
-```
-Then try VistaDream with sparse images as input using the following commands:
-```
-python demo_sparse.py
-```
-Then, you should obtain:
-- ```data/bedroom/scene.pth```: the generated gaussian field;
-- ```data/bedroom/video_rgb(dpt).mp4```: the rgb(dpt) renderings from the scene.
+**End-to-end VistaDream** builds a scene automatically along a Spiral trajectory,
+then refines it with MCS and exports the videos. MCS can take substantial time;
+the view count, sampling steps, and Gaussian optimization iterations are editable
+in the interface.
 
-## 🔦 Generate your own scene (Single or Sparse views as input)
-If you need to improve the reconstruction quality of your own images, please refer to [INSTRUCT.md](pipe/cfgs/INSTRUCT.md)
+Each server process owns one shared scene; operate one reconstruction at a time.
+All callbacks share the same queue lock. Run separate processes/output directories
+for independent sessions.
 
-To visualize the generated gaussian field, you can use the following script:
+## Configuration and outputs
+
+Edit [pipe/cfgs/basic.yaml](pipe/cfgs/basic.yaml), or pass a copy with `--config`.
+The `mdi` backend uses **both MoGe-3 and LingBot-Depth** and is required in this
+release. Fooocus's model directory is resolved relative to the repository root;
+Hugging Face model IDs can be replaced with local checkpoints. For MoGe-3 and
+LingBot-Depth, a local checkpoint must be the actual `model.pt` file.
+
+```bash
+python INTERFACE.py --output-dir temp/my_scene --traj-type interp
+# Restart using the same directory, then click ReLoad:
+python INTERFACE.py --output-dir temp/my_scene
+# Network binding is opt-in:
+python INTERFACE.py --host 0.0.0.0 --port 7860
 ```
-import torch
-from ops.utils import save_ply
-scene = torch.load(f'data/vistadream/piano/refine.scene.pth')
-save_ply(scene,'gf.ply')
-```
-and feed the ```gf.ply``` to [SuperSplat](https://playcanvas.com/supersplat/editor) for visualization.
 
-## 🔦 ToDo List
-- [x] Early check in generation.
-- [x] Support more types of camera trajectory. Please follow [Here](ops/trajs/TRAJECTORY.MD) to define your trajectory. An example is given in this [issue](https://github.com/WHU-USI3DV/VistaDream/issues/11).
-- [x] Support sparse-view-input (and no pose needed). An example is given in this [issue](https://github.com/WHU-USI3DV/VistaDream/issues/14).
-- [x] Interactive Demo.
+Without `--output-dir`, each launch creates `temp/<timestamp>/`. Files include:
 
-## 🔗 Related Projects
-We sincerely thank the excellent open-source projects:
-- [Fooocus](https://github.com/lllyasviel/Fooocus) for the wonderful inpainting quality;
-- [LLaVA](https://github.com/haotian-liu/LLaVA) for the wonderful image analysis and QA ability;
-- [Depth-Pro](https://github.com/apple/ml-depth-pro) for the wonderful monocular metric depth estimation accuracy;
-- [Prior-Depth-Anything](https://github.com/SpatialVision/Prior-Depth-Anything) for the wonderful monocular metric depth completion accuracy;
-- [StableDiffusion](https://github.com/CompVis/stable-diffusion) for the wonderful image generation/optimization ability.
+| File | Contents |
+| --- | --- |
+| `color.png` | Input image |
+| `scene.coarse.pth` | Coarse scene and configuration |
+| `scene.refine.pth` | MCS-refined scene |
+| `temp.splat` | Downsampled browser preview |
+| `temp.video_rgb.mp4`, `temp.video_dpt.mp4` | Rendered videos |
+
+**ReSet** clears the in-memory scene and viewer; saved files remain available to
+**ReLoad**, which restores the coarse scene. Adding/undoing a view or regenerating
+the coarse scene invalidates older refined results. The scene format serializes
+Python objects; use your own saved scenes with this version of the code.
+

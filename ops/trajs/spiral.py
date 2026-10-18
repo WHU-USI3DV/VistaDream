@@ -15,10 +15,10 @@ class Spiral(Traj_Base):
         t = np.linspace(0, 1, self.nframe)
         r = np.sin(2 * np.pi * t) * self.radius * self.rot_ratio
         # rotation angles at each frame
-        theta = 2 * np.pi * t * self.nframe 
+        theta = 2 * np.pi * t * self.nframe
         # try not to change y (up-down for floor and sky)
         x = r * np.cos(theta)
-        y = r * np.sin(theta) * 0.3 # here for 
+        y = r * np.sin(theta) * 0.3 # here for
         z = -r
         z[z<0]*=self.forward_ratio
         z[z>0]*=self.backward_ratio

@@ -12,10 +12,10 @@ from ops.gs.basic import Frame,Gaussian_Scene
 
 class Post_Optimize():
     def __init__(self):
-        self.iters = 10 #self.cfg.scene.mcs.pre_hole_inpainting.nviews
+        self.iters =20 #self.cfg.scene.mcs.pre_hole_inpainting.nviews
         self.steps = 64 #self.cfg.scene.mcs.pre_hole_inpainting.nsteps
         self.alpha_thres = 0.7
-    
+
     def __call__(self, scene:Gaussian_Scene):
         trajs = scene.dense_trajs
         print('[Optimization before MCS]...')
@@ -63,30 +63,30 @@ class WarpExtend_Phase():
         self.coarse_interval_rgb_fn = None
         # post optimizer
         self.post_optimizer = Post_Optimize()
-    
+
     def _set_coarse_fn_(self):
         rgb_fn = self.cfg.scene.input.rgb
         if os.path.exists(rgb_fn):
             dir = rgb_fn[:str.rfind(rgb_fn,'/')]
             self.coarse_interval_rgb_fn = f'{dir}/temp.coarse.interval.png'
-    
+
     def _pose_to_frame(self,scene:Gaussian_Scene,pose):
         extrinsic = np.linalg.inv(pose)
         H = scene.frames[0].H + self.next_extend_margin
         W = scene.frames[0].W + self.next_extend_margin
-        prompt = scene.frames[-1].prompt
+        prompt = scene.frames[0].prompt
         intrinsic = deepcopy(scene.frames[0].intrinsic)
         intrinsic[0,-1], intrinsic[1,-1] = W/2, H/2
         frame = Frame(H=H,W=W,intrinsic=intrinsic,extrinsic=extrinsic,prompt=prompt)
-        frame = scene._render_for_inpaint(frame)  
+        frame = scene._render_for_inpaint(frame)
         return frame
-      
+
     def _next_frame(self,scene:Gaussian_Scene):
-        # select the frame with largest holes but less than 60% 
+        # select the frame with largest holes but less than 60%
         inpaint_area_ratio = []
         for pose in scene.dense_trajs:
             temp_frame = self._pose_to_frame(scene,pose)
-            inpaint_mask = temp_frame.inpaint 
+            inpaint_mask = temp_frame.inpaint
             inpaint_area_ratio.append(np.mean(inpaint_mask))
         inpaint_area_ratio = np.array(inpaint_area_ratio)
         inpaint_area_ratio[inpaint_area_ratio > 0.6] = 0.
@@ -103,7 +103,7 @@ class WarpExtend_Phase():
         self.select_frames.append(select)
         pose = scene.dense_trajs[select]
         frame = self._pose_to_frame(scene,pose)
-        return frame   
+        return frame
 
     def _inpaint_next_frame(self,scene:Gaussian_Scene,frame:Frame):
         self._set_coarse_fn_()
@@ -121,7 +121,7 @@ class WarpExtend_Phase():
 
     def _warp_and_inpaint(self,scene:Gaussian_Scene):
         self.select_frames = []
-        warp_samples = self.n_sample - len(scene.frames) + 1 # exclude input view
+        warp_samples = 20 - len(scene.frames) + 1 # exclude input view
         for i in range(warp_samples):
             print(f'Processing {i+1}/{warp_samples} frame...')
             next_frame = self._next_frame(scene)
@@ -141,4 +141,3 @@ class WarpExtend_Phase():
         scene = self._warp_and_inpaint(scene)
         scene = self._inpaint_holes(scene)
         return scene
-        

@@ -90,7 +90,7 @@ def visual_pcds(xyzs, normal = True):
             pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(0.2, 20))
         pcds.append(pcd)
     o3d.visualization.draw_geometries(pcds)
-    
+
 def save_pic(input_pic:np.array,save_fn,normalize=True):
     # avoid replace
     pic = deepcopy(input_pic).astype(np.float32)
@@ -162,7 +162,7 @@ def quaternion_from_matrix(M):
     m12 = M[..., 1, 2]
     m20 = M[..., 2, 0]
     m21 = M[..., 2, 1]
-    m22 = M[..., 2, 2]   
+    m22 = M[..., 2, 2]
     K = torch.zeros((len(M),4,4)).to(M)
     K[:,0,0] = m00 - m11 - m22
     K[:,1,0] = m01 + m10
@@ -195,7 +195,7 @@ def numpy_quaternion_from_matrix(M):
     m12 = M[..., 1, 2]
     m20 = M[..., 2, 0]
     m21 = M[..., 2, 1]
-    m22 = M[..., 2, 2]   
+    m22 = M[..., 2, 2]
     K = np.zeros((len(M),4,4))
     K[...,0,0] = m00 - m11 - m22
     K[...,1,0] = m01 + m10
@@ -349,7 +349,7 @@ def save_ply(scene,path):
     opacities = torch.cat([gf.opacity.reshape(-1) for gf in scene.gaussian_frames],dim=0)[:,None].detach().cpu().numpy()
     rotation  = torch.cat([gf.rotation.reshape(-1,4) for gf in scene.gaussian_frames],dim=0).detach().cpu().numpy()
     rgb       = torch.sigmoid(torch.cat([gf.rgb.reshape(-1,3) for gf in scene.gaussian_frames],dim=0))
-    # rgb    
+    # rgb
     features_dc, features_rest = color2feat(rgb)
     f_dc = features_dc.flatten(start_dim=1).detach().cpu().numpy()
     f_rest = features_rest.flatten(start_dim=1).detach().cpu().numpy()
@@ -361,7 +361,7 @@ def save_ply(scene,path):
     elements[:] = list(map(tuple, attributes))
     el = PlyElement.describe(elements, 'vertex')
     PlyData([el]).write(path)
-    
+
 
 from sklearn.neighbors import NearestNeighbors
 def knn(x, K: int = 4):

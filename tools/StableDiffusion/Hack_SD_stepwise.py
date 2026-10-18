@@ -1,4 +1,5 @@
 import torch
+from pathlib import Path
 from diffusers import LCMScheduler,PNDMScheduler
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import *
 
@@ -6,14 +7,18 @@ from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import *
 class Hack_SDPipe_Stepwise(StableDiffusionPipeline):
 
     @torch.no_grad()
-    def _use_lcm(self,use=True,ckpt='"latent-consistency/lcm-lora-sdv1-5"'):
+    def _use_lcm(self,use=True,ckpt='latent-consistency/lcm-lora-sdv1-5'):
         if use:
             self.use_lcm = True
             adapter_id = ckpt
             self.scheduler = LCMScheduler.from_config(self.scheduler.config)
             # load and fuse lcm lora
             self._guidance_scale = 0.0
-            self.load_lora_weights(adapter_id)
+            local_file = Path(adapter_id)
+            if local_file.is_file():
+                self.load_lora_weights(str(local_file.parent), weight_name=local_file.name)
+            else:
+                self.load_lora_weights(adapter_id, weight_name="pytorch_lora_weights.safetensors")
             self.fuse_lora()
         else:
             self.use_lcm = False
@@ -35,7 +40,7 @@ class Hack_SDPipe_Stepwise(StableDiffusionPipeline):
         # 2. Define call parameters
         batch_size = 1
         device = self._execution_device
-        
+
         # 4. Reset timesteps and current timestep of scheduler
         self.timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
@@ -102,7 +107,7 @@ class Hack_SDPipe_Stepwise(StableDiffusionPipeline):
     # @torch.no_grad()
     def _encode(self, input):
         '''
-        # single condition encoding 
+        # single condition encoding
         input: B3HW
         return: B4H'W'
         if low-vram: vae on cpu, input should also on cpu
@@ -113,7 +118,7 @@ class Hack_SDPipe_Stepwise(StableDiffusionPipeline):
         # scale latent
         latent = mean * self.vae.config.scaling_factor
         return latent
-    
+
     def _decode(self, latent):
         '''
         single target decoding
@@ -153,7 +158,7 @@ class Hack_SDPipe_Stepwise(StableDiffusionPipeline):
     def _solve_x0(self, latents, noise_pred, t):
         if self.use_lcm:
             x0_latents = self.scheduler.step(noise_pred, t.squeeze(), latents)
-            x0_latents = x0_latents.denoised 
+            x0_latents = x0_latents.denoised
             # note here must be a fake denoise
             self.scheduler._step_index-=1
         else:
@@ -164,9 +169,9 @@ class Hack_SDPipe_Stepwise(StableDiffusionPipeline):
         return x0_latents, x0
 
     def _step_denoise(self, latents, noise_pred, t):
-        latents = self.scheduler.step(noise_pred, t.squeeze(), latents).prev_sample   
+        latents = self.scheduler.step(noise_pred, t.squeeze(), latents).prev_sample
         return latents
-    
+
     def xt_x0_noise(
         self,
         xt_latents: torch.Tensor,
@@ -191,7 +196,7 @@ class Hack_SDPipe_Stepwise(StableDiffusionPipeline):
 
         noise = (xt_latents - sqrt_alpha_prod * x0_latents) / sqrt_one_minus_alpha_prod
         return noise
-    
+
     def _solve_noise_given_x0_latent(self, latents, x0_latents, t):
         noise = self.xt_x0_noise(latents,x0_latents,t)
         # -------------------- noise for supervision -----------------
@@ -201,6 +206,3 @@ class Hack_SDPipe_Stepwise(StableDiffusionPipeline):
             noise = self.scheduler.get_velocity(x0_latents, noise, t)
         # ------------------------------------------------------------
         return noise
-    
-
-

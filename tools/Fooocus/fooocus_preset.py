@@ -1,8 +1,8 @@
 import modules.config
 
 def set_ckpt_dir(ckpts):
-    modules.config.paths_checkpoints = f'{ckpts}/checkpoints/'
-    modules.config.paths_loras = f'{ckpts}/loras/'
+    modules.config.paths_checkpoints = [f'{ckpts}/checkpoints/']
+    modules.config.paths_loras = [f'{ckpts}/loras/']
     modules.config.path_embeddings =  f'{ckpts}/embeddings/'
     modules.config.path_vae_approx = f'{ckpts}/vae_approx/'
     modules.config.path_vae = f'{ckpts}/vae/'
@@ -13,3 +13,5 @@ def set_ckpt_dir(ckpts):
     modules.config.path_fooocus_expansion = f'{ckpts}/prompt_expansion/fooocus_expansion'
     modules.config.path_safety_checker = f'{ckpts}/safety_checker/'
 
+
+    modules.config.update_files()

@@ -1,4 +1,5 @@
 import os
+from ops.utils.memory import release_memory
 # First Stage
 from ops.legos.llava import Llava
 from ops.legos.rgbipt import RGB_Inpaint_Tool
@@ -10,6 +11,7 @@ class Load_Tools_Phase():
     def __init__(self,cfg,mcs=False):
         self.cfg = cfg
         self.llava = None
+        self.mcs_refiner = None
         self.llava_load_failed = False
         self.enable_llava = False
         preloads = self.cfg.tools.preload
@@ -53,18 +55,22 @@ class Load_Tools_Phase():
             self.llava_load_failed = True
             return None
 
+    def _unload_llava_(self):
+        llava = self.llava
+        self.llava = None
+        if llava is not None:
+            del llava
+        release_memory()
+
     def _load_fooocus_(self):
-        # in case of corrupted fooocus ckpt
-        fooocus_path = f'{self.cfg.model.paint.fooocus.ckpts}/checkpoints/juggernautXL_v8Rundiffusion.safetensors'
-        if not os.path.exists(fooocus_path):
-            if os.path.exists(fooocus_path + '.corrupted'):
-                os.system(f'mv {fooocus_path}.corrupted {fooocus_path}')
         self.rgb_inpaint = RGB_Inpaint_Tool(self.cfg)
 
     def _load_dpt_inpaintor_(self):
         self.dpt_inpaint = Depth_Inpaint_Tool(self.cfg,device='cpu')
 
     def _load_mcs_(self):
+        if self.mcs_refiner is not None:
+            return self.mcs_refiner
         self.mcs_refiner = HackSD_MCS(
             device='cpu',
             use_lcm=True,
@@ -72,3 +78,11 @@ class Load_Tools_Phase():
             total_steps = self.cfg.scene.mcs.total_steps,
             sd_ckpt = self.cfg.model.optimize.sd,
             lcm_ckpt = self.cfg.model.optimize.lcm)
+        return self.mcs_refiner
+
+    def _unload_mcs_(self):
+        mcs_refiner = self.mcs_refiner
+        self.mcs_refiner = None
+        if mcs_refiner is not None:
+            del mcs_refiner
+        release_memory()

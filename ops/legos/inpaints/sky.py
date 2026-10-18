@@ -34,8 +34,8 @@ class Sky_Tool():
         valid_dpt = input_frame.dpt[~sky]
         _max = np.percentile(valid_dpt,95)
         self.sky_depth = _max*2
-    
-    def _remove_sky_(self,frame):  
+
+    def _remove_sky_(self,frame):
         sky = self._segment_sky_(frame.rgb)
         dpt = frame.dpt
         ipt = frame.inpaint
@@ -51,7 +51,7 @@ class Sky_Tool():
     def _sphere_sky_(self,frame):
         '''
         intrinsic.inv() @ [u,v,1]*d -- [a,b,c]*d
-        extrinsic.inv() @ [a,b,c]*d + [sx,sy,sz] -- Norm2 -- R2      
+        extrinsic.inv() @ [a,b,c]*d + [sx,sy,sz] -- Norm2 -- R2
         '''
         inv_intrinsic = np.linalg.inv(frame.intrinsic)
         inv_extrinsic = np.linalg.inv(frame.extrinsic)
@@ -59,7 +59,7 @@ class Sky_Tool():
         # get u,v mesh grid
         grid_u,grid_v = np.meshgrid(np.arange(frame.W),np.arange(frame.H))
         grid = np.concatenate((grid_u[...,None],grid_v[...,None],np.ones_like(grid_v[...,None])),axis=-1)
-        
+
         # move everything to torch
         with torch.no_grad():
             grid = torch.from_numpy(grid.astype(np.float32)).cuda()
@@ -81,7 +81,7 @@ class Sky_Tool():
             d1 = (-b - t) / 2 / a
             d = torch.where(d0>0,d0,d1)
         d = d.cpu().numpy()
-        
+
         # set depth
         sky = self._segment_sky_(frame.rgb)
         dpt = frame.dpt
@@ -93,7 +93,7 @@ class Sky_Tool():
         frame.dpt = dpt
         frame.inpaint = ipt
         return frame
-            
+
     def _plain_sky_(self,frame):
         sky = self._segment_sky_(frame.rgb)
         dpt = frame.dpt
@@ -106,7 +106,7 @@ class Sky_Tool():
         frame.dpt = dpt
         frame.inpaint = ipt
         return frame
-    
+
     def _no_precess_(self,frame):
         sky = self._segment_sky_(frame.rgb)
         dpt = frame.dpt
@@ -116,20 +116,10 @@ class Sky_Tool():
         frame.sky = sky
         frame.dpt = dpt
         frame.inpaint = ipt
-        return frame 
+        return frame
 
     def __call__(self, frame):
         if self.sky_keep:
             return self._sphere_sky_(frame)
         else:
             return self._remove_sky_(frame)
-        
-if __name__ == '__main__':
-    from pipe.cfgs import load_cfg
-    from ops.utils.utils import save_pic
-    
-    cfg = load_cfg('pipe/cfgs/basic.yaml')
-    tool = Sky_Tool(cfg)
-    rgb = np.array(Image.open(f'/mnt/proj/0_Datasets/6_VKITTI/train/0020-15-deg-right/images/00004.png'))
-    sky = tool._segment_sky_(rgb)
-    save_pic(sky*1.,'sky.png')

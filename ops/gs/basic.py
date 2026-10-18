@@ -23,7 +23,7 @@ class Frame():
     inpaint: bool mask in shape of H*W for inpainting
     intrinsic: 3*3
     extrinsic: array in shape of 4*4
-    
+
     As a class for:
     initialize camera
     accept rendering result
@@ -50,7 +50,7 @@ class Frame():
         self.extrinsic = extrinsic
         self._rgb_rect()
         self._extr_rect()
-        # for inpainting 
+        # for inpainting
         self.inpaint = inpaint
         # for keep supervision
         self.keep = False
@@ -67,7 +67,7 @@ class Frame():
                 self.rgb = np.array(self.rgb)
             if np.amax(self.rgb) > 1.1:
                 self.rgb = self.rgb / 255
-            
+
     def _extr_rect(self):
         if self.extrinsic is None: self.extrinsic = np.eye(4)
         self.inv_extrinsic = np.linalg.inv(self.extrinsic)
@@ -127,13 +127,13 @@ class Gaussian_Frame():
         if np.sum(paint_mask)<3:
             paint_mask = np.zeros((self.H,self.W))
             paint_mask[0:1] = 1
-        paint_mask = (paint_mask>.5) & sample_mask 
+        paint_mask = (paint_mask>.5) & sample_mask
         self.rgb = self.rgb[paint_mask]
         self.xyz = self.xyz[paint_mask]
         self.scale = self.scale[paint_mask]
         self.opacity = self.opacity[paint_mask]
         self.rotation = self.rotation[paint_mask]
-            
+
     def _to_cuda(self):
         self.rgb        = torch.from_numpy(self.rgb.astype(np.float32)).to(self.device)
         self.xyz        = torch.from_numpy(self.xyz.astype(np.float32)).to(self.device)
@@ -179,7 +179,7 @@ class Gaussian_Frame():
         # gaussian property -- HW4 rotation
         self.rotation = np.zeros((self.H,self.W,4))
         self.rotation[:,:,0] = 1.
-    
+
     def _set_property_from_frame(self,frame: Frame):
         '''frame here is a complete init/inpainted frame'''
         # basic frame-level property
@@ -192,10 +192,10 @@ class Gaussian_Frame():
         self.xyz = self._to_3d()
         # gaussian property -- HW3 rgb
         self.rgb = frame.rgb
-        # gaussian property -- HW4 rotation HW3 scale 
+        # gaussian property -- HW4 rotation HW3 scale
         self._coarse_init_scale_rotations()
         # gaussian property -- HW opacity
-        self.opacity = np.ones((self.H,self.W,1)) #* 0.8
+        self.opacity = np.ones((self.H,self.W,1)) * 0.8
         # to cuda
         self._paint_filter(frame.inpaint)
         self._to_cuda()
@@ -216,8 +216,8 @@ class Gaussian_Frame():
         self.scale = self.scale.requires_grad_(sign)
         self.opacity = self.opacity.requires_grad_(sign)
         self.rotation = self.rotation.requires_grad_(sign)
-    
-class Gaussian_Scene():  
+
+class Gaussian_Scene():
     def __init__(self,cfg=None):
         # frames initialing the frame
         self.frames = []
@@ -238,7 +238,21 @@ class Gaussian_Scene():
         else:
             self.traj_min_percentage,self.traj_max_percentage,self.traj_forward_ratio,self.traj_backward_ratio = 5, 50, 0.3, 0.4
         self.dense_trajs = []
-        
+
+    def to(self, device):
+        """Move all Gaussian parameters to one device for rasterization/training."""
+        device = torch.device(device)
+        for gf in self.gaussian_frames:
+            gf.device = str(device)
+            for name in ('rgb', 'xyz', 'scale', 'opacity', 'rotation'):
+                tensor = getattr(gf, name, None)
+                if tensor is not None and tensor.device != device:
+                    # Keep the existing Parameter object so any optimizer
+                    # references remain valid when a scene is moved in-place.
+                    tensor.data = tensor.data.to(device)
+        self.device = str(device)
+        return self
+
     # basic operations
     def _render_RGBD(self,frame,background_color='black'):
         '''
@@ -246,6 +260,18 @@ class Gaussian_Scene():
         :extinsic: tensor 4*4-dimension
         :out: tensor H*W*3-dimension
         '''
+        # Scene files produced by CPU-only saves can carry ``device='cuda'``
+        # while their Gaussian tensors remain on CPU. gsplat requires every
+        # rasterization input to be on the same CUDA device.
+        render_device = torch.device(self.device)
+        if torch.cuda.is_available() and render_device.type != 'cuda':
+            render_device = torch.device('cuda')
+        if self.gaussian_frames and any(
+            getattr(gf, 'xyz', None) is not None and gf.xyz.device != render_device
+            for gf in self.gaussian_frames
+        ):
+            self.to(render_device)
+
         background = None
         if background_color =='white':
             background = torch.ones(1,3,device=self.device)
@@ -274,8 +300,8 @@ class Gaussian_Scene():
                                                 colors    = rgb,
                                                 Ks        = intrinsic[None],
                                                 viewmats  = extrinsic[None],
-                                                width     = W, 
-                                                height    = H, 
+                                                width     = W,
+                                                height    = H,
                                                 packed    = False,
                                                 near_plane= 0.01,
                                                 render_mode="RGB+ED",
@@ -284,7 +310,7 @@ class Gaussian_Scene():
         render_rgb  = render_out[:,:,0:3]
         render_dpt  = render_out[:,:,-1]
         return render_rgb, render_dpt, render_alpha
-    
+
     @torch.no_grad()
     def _render_for_inpaint(self,frame):
         # first render
@@ -299,7 +325,7 @@ class Gaussian_Scene():
         frame.dpt = render_dpt
         frame.inpaint = render_msk
         return frame
-    
+
     def _add_trainable_frame(self,frame:Frame,require_grad=True):
         # temp: make sky unpaint region -- no gaussian generation, no depth alignment -- no rgb supervision
         # for the init frame, we keep all pixels for finetuning
@@ -311,7 +337,7 @@ class Gaussian_Scene():
     def _require_grad_(self,sign=False):
         for gf in self.gaussian_frames:
             gf._require_grad(sign)
-            
+
     def _visualize_(self):
         rgbs = []
         xyzs = []
@@ -326,4 +352,3 @@ class Gaussian_Scene():
         rgbs = np.concatenate(rgbs,axis = 0)
         xyzs = np.concatenate(xyzs,axis = 0)
         visual_pcd(xyzs,rgbs)
-            

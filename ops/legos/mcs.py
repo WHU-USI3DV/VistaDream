@@ -6,7 +6,7 @@ from tools.StableDiffusion.Hack_SD_stepwise import Hack_SDPipe_Stepwise
 Input: Multiview images with added noise
 denoise to x0
 denoise from step t1 to step t2
-'''    
+'''
 
 class HackSD_MCS():
     '''
@@ -23,7 +23,7 @@ class HackSD_MCS():
                  use_lcm=True,
                  denoise_steps=10,
                  anchor_steps=0,
-                 sd_ckpt=f'tools/StableDiffusion/ckpt',
+                 sd_ckpt='stable-diffusion-v1-5/stable-diffusion-v1-5',
                  lcm_ckpt=f'latent-consistency/lcm-lora-sdv1-5',
                  total_steps=50) -> None:
         '''
@@ -96,7 +96,7 @@ class HackSD_MCS():
         timestep_in_1000 = torch.tensor([timestep_in_1000]).to(self.device)
         noise_pred = self.model._step_noise(self.latents, timestep_in_1000, prompt_latent.repeat(len(self.latents),1,1))
         # solve image
-        _,x0 = self.model._solve_x0(self.latents,noise_pred,timestep_in_1000)   
+        _,x0 = self.model._solve_x0(self.latents,noise_pred,timestep_in_1000)
         x0 = (x0 + 1) / 2 # in 0-1
         return noise_pred, x0, timestep_in_1000
 
@@ -146,42 +146,7 @@ class HackSD_MCS():
         # denoise
         noise_pred = self.model._step_noise(latent, t, prompt_latent.repeat(len(latent),1,1))
         # solve image
-        _,x0 = self.model._solve_x0(latent,noise_pred,t)   
+        _,x0 = self.model._solve_x0(latent,noise_pred,t)
         x0 = (x0 + 1) / 2 # in 0-1
         x0 = x0[0].permute(1,2,0).detach().cpu().numpy()
         return x0
-        
-if __name__ == '__main__':
-    from PIL import Image
-    tool = HackSD_MCS(device='cuda',use_lcm=True,
-                      denoise_steps=9,
-                      anchor_steps=5,
-                      sd_ckpt='/mnt/proj/0_Checkpoints/6_Stable_Diffusion',
-                      lcm_ckpt='/mnt/proj/0_Checkpoints/7_LCM/pytorch_lora_weights.safetensors')
-    image = np.array(Image.open(f'/mnt/proj/5_VistaDream/VistaDream+_v1/rect.0.png'))
-    image = torch.from_numpy((image/255.).astype(np.float32)).permute(2,0,1)[None].to('cuda')
-    image = image * 2 - 1
-    
-    prompt = torch.load('/mnt/proj/5_VistaDream/VistaDream+_v1/data/main_AblateRecon_MDE/living_room/scene.coarse.pth',weights_only=False)
-    prompt = prompt.frames[0].prompt
-    rgb_prompt_latent = tool.model._encode_text_prompt(prompt)
-    
-    
-    t = tool.timesteps[-1].repeat(1).to(tool.device)
-    
-    latent = tool.model._encode(image)
-    noise = torch.randn_like(latent)
-    latent,_,_ = tool.model.scheduler.add_noise(latent, noise, t)
-    
-    noise = tool.model._step_noise(latent, t, rgb_prompt_latent)
-    # solve image
-    _,x0 = tool.model._solve_x0(latent,noise,t)   
-    x0 = (x0 + 1) / 2 # in 0-1
-    
-    x0 = x0[0].permute(1,2,0).detach().cpu().numpy()
-    x0 = (x0*255).astype(np.uint8)
-    x0 = Image.fromarray(x0)
-    x0.save(f'recon.png')
-    
-
-

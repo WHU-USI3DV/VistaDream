@@ -3,7 +3,7 @@ import open3d as o3d
 from ops.utils.utils import dpt2xyz
 
 class Traj_Base():
-    def __init__(self, 
+    def __init__(self,
                  scene = None,
                  nframe = 100) -> None:
         self.scene = scene
@@ -42,7 +42,7 @@ class Traj_Base():
     def trans_by_look_at(self, camera_triples):
         '''
         camera_triples list: [(pos:numpy,target:numpy,up:numpy)]
-        pos: camera position 
+        pos: camera position
         target: look at position
         up: approximate camera up direction
         coor-system: z(forward) x(right) y(down)
@@ -60,26 +60,26 @@ class Traj_Base():
 
     def camera_target_up(self):
         pass
-    
+
     def __call__(self):
         camera_triples = self.camera_target_up()
         trajs = self.trans_by_look_at(camera_triples)
         return trajs
-    
+
     def create_camera_geometry(self,pose):
         scale = self.radius * 0.1
         vertices = np.array([
-            [0, 0, 0], 
-            [-1, -1, 2], [1, -1, 2], [1, 1, 2], [-1, 1, 2],  
+            [0, 0, 0],
+            [-1, -1, 2], [1, -1, 2], [1, 1, 2], [-1, 1, 2],
         ]) * scale
-        vertices = np.hstack((vertices, np.ones((vertices.shape[0], 1))))  
-        vertices = (pose @ vertices.T).T[:, :3]  
+        vertices = np.hstack((vertices, np.ones((vertices.shape[0], 1))))
+        vertices = (pose @ vertices.T).T[:, :3]
 
         lines = [
-            [0, 1], [0, 2], [0, 3], [0, 4],  
-            [1, 2], [2, 3], [3, 4], [4, 1], 
+            [0, 1], [0, 2], [0, 3], [0, 4],
+            [1, 2], [2, 3], [3, 4], [4, 1],
         ]
-        colors = [[1, 0, 0] for _ in lines]  
+        colors = [[1, 0, 0] for _ in lines]
         line_set = o3d.geometry.LineSet(
             points=o3d.utility.Vector3dVector(vertices),
             lines=o3d.utility.Vector2iVector(lines),
@@ -90,12 +90,12 @@ class Traj_Base():
     def _visualize_traj(self,trajs):
         visualizer = o3d.visualization.Visualizer()
         visualizer.create_window()
-        
+
         xyz = self.xyz.reshape(-1,3)
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(xyz)
-        
-        visualizer.add_geometry(pcd) 
+
+        visualizer.add_geometry(pcd)
         for traj in trajs:
             camera = self.create_camera_geometry(traj)
             visualizer.add_geometry(camera)

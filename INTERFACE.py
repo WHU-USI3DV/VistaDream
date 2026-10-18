@@ -1,187 +1,224 @@
+"""VistaDream interactive reconstruction with MoGe-3 and LingBot-Depth."""
+import argparse
 import os
-import time
+from datetime import datetime
+from pathlib import Path
+
+os.environ.setdefault("GRADIO_ANALYTICS_ENABLED", "False")
+
 import gradio as gr
-from ops.gs.basic import *
-from pipe.cfgs import load_cfg
-from pipe.vistadream_interface import *
+import torch
+from PIL import Image
 from gradio_model3dgscamera import Model3DGSCamera
+from ops.utils.memory import release_memory
+from ops.trajs import _generate_trajectory
+from pipe.cfgs import load_cfg, PROJECT_ROOT
+from pipe.vistadream_interface import Pipeline, get_extrinsic, save_scene, save_splat, load_scene
 
-# --------------------------
-# constant settings
-# --------------------------
-
-# get time-stamp
-t = time.localtime()
-t = f'{int(t.tm_mon)}_{int(t.tm_mday)}_{int(t.tm_hour)}_{int(t.tm_min)}_{int(t.tm_sec)}'
-
-# saving path
 NEAR, FAR = 0.01, 100
-TRAJ_TYPE = 'interp' # use interp or spline
-TEMP_DIR = f'./temp/{t}'
-COLOR_PATH = f'{TEMP_DIR}/color.png'
-SCENE_PATH = f"{TEMP_DIR}/scene.coarse.pth"
-SPLAT_PATH = f"{TEMP_DIR}/temp.splat"
-SCENE_FINAL_PATH = f"{TEMP_DIR}/scene.refine.pth"
-RGB_VIDEO_PATH = f"{TEMP_DIR}/temp.video_rgb.mp4"
-DPT_VIDEO_PATH = f"{TEMP_DIR}/temp.video_dpt.mp4"
-if not os.path.exists(TEMP_DIR): os.makedirs(TEMP_DIR)
+TRAJ_TYPE = 'interp'
+VIEWER_MAX_LONG_EDGE = 768
+PIPELINE_CONCURRENCY_ID = "vistadream-pipeline"
 
-# basic tools
-cfg = load_cfg(f'pipe/cfgs/basic.yaml')
-# in case of corrupted fooocus ckpt
-fooocus_path = f'{cfg.model.paint.fooocus.ckpts}/checkpoints/juggernautXL_v8Rundiffusion.safetensors'
-if not os.path.exists(fooocus_path):
-    if os.path.exists(fooocus_path + '.corrupted'):
-        os.system(f'mv {fooocus_path}.corrupted {fooocus_path}')
-pipe = Pipeline(cfg,traj_type=TRAJ_TYPE) # spline or interp
-    
-# pid, aviod killed
-pid = os.getpid()
-os.system(f'echo -1000 | sudo tee /proc/{pid}/oom_score_adj')
 
-# --------------------------
-# core processor
-# --------------------------
+def configure_app(config_path=None, output_dir=None, traj_type='interp'):
+    global cfg, pipe, TEMP_DIR, COLOR_PATH, SCENE_PATH, SPLAT_PATH
+    global SCENE_FINAL_PATH, RGB_VIDEO_PATH, DPT_VIDEO_PATH
+    cfg = load_cfg(config_path)
+    pipe = Pipeline(cfg, traj_type=traj_type, load_tool=False)
+    directory = Path(output_dir) if output_dir else PROJECT_ROOT / 'temp' / datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+    TEMP_DIR = str(directory.expanduser().resolve())
+    Path(TEMP_DIR).mkdir(parents=True, exist_ok=True)
+    COLOR_PATH = f'{TEMP_DIR}/color.png'
+    SCENE_PATH = f'{TEMP_DIR}/scene.coarse.pth'
+    SPLAT_PATH = f'{TEMP_DIR}/temp.splat'
+    SCENE_FINAL_PATH = f'{TEMP_DIR}/scene.refine.pth'
+    RGB_VIDEO_PATH = f'{TEMP_DIR}/temp.video_rgb.mp4'
+    DPT_VIDEO_PATH = f'{TEMP_DIR}/temp.video_dpt.mp4'
 
-def interactive_build_scaffold(img,seed,text_prompt):  
-    img.save(COLOR_PATH)  
+
+configure_app()
+
+
+def _require_scene():
+    if pipe.scene is None:
+        raise gr.Error('Upload an image and build the scaffold, or reload a saved scene first.')
+
+
+def _invalidate_refinement():
+    Path(SCENE_FINAL_PATH).unlink(missing_ok=True)
+    for path in (RGB_VIDEO_PATH, DPT_VIDEO_PATH):
+        Path(path).unlink(missing_ok=True)
+
+
+def _prepare_image(img, seed):
+    if img is None:
+        raise gr.Error('Please upload an input image.')
+    if not torch.cuda.is_available():
+        raise gr.Error('VistaDream requires an NVIDIA GPU with CUDA.')
+    pipe.scene = None
+    release_memory()
+    img = img.convert('RGB')
+    img.save(COLOR_PATH)
     pipe.cfg.scene.input.rgb = COLOR_PATH
-    pipe.cfg.scene.outpaint.seed = seed
-    if not os.path.exists(TEMP_DIR): os.makedirs(TEMP_DIR)
-    pipe._build_scaffold_(img,user_prompt=text_prompt)
-    torch.cuda.empty_cache()
-    save_scene(pipe.cfg,pipe.scene,SCENE_PATH,SPLAT_PATH)
-    # pipe.tools.llava = None
-    # torch.cuda.empty_cache()
-    if os.path.exists(SCENE_FINAL_PATH): os.system(f'rm {SCENE_FINAL_PATH}') # re-start
-    return \
-        gr.update(width=pipe.scene.frames[0].W*2,
-                  height=pipe.scene.frames[0].H*2,
-                  camera_fx=pipe.scene.frames[0].intrinsic[0,0]*2,
-                  camera_fy=pipe.scene.frames[0].intrinsic[0,0]*2),\
-        str(SPLAT_PATH)
+    pipe.cfg.scene.outpaint.seed = int(seed)
+    # A new reconstruction replaces both coarse and refined results.
+    Path(SCENE_PATH).unlink(missing_ok=True)
+    _invalidate_refinement()
+    return img
+
+
+def _restore_scene(path):
+    if not Path(path).is_file():
+        raise gr.Error('No saved scene in this output directory. Build a scaffold first.')
+    pipe.scene = None
+    release_memory()
+    saved_cfg, pipe.scene = load_scene(path)
+    # Keep the shared config object used by the already loaded tools.
+    pipe.cfg.scene = saved_cfg.scene
+    pipe.cfg.scene.input.rgb = COLOR_PATH
+    pipe.scene.cfg = pipe.cfg
+
+
+def _viewer_camera_update(value=None):
+    frame = pipe.scene.frames[0]
+    scale = min(1.0, VIEWER_MAX_LONG_EDGE / max(frame.W, frame.H))
+    width, height = max(1, round(frame.W * scale)), max(1, round(frame.H * scale))
+    update = dict(width=width, height=height, camera_width=width, camera_height=height,
+                  camera_fx=float(frame.intrinsic[0, 0]) * scale,
+                  camera_fy=float(frame.intrinsic[1, 1]) * scale)
+    if value is not None:
+        update['value'] = value
+    return gr.update(**update)
+
+
+def interactive_build_scaffold(img, seed, text_prompt):
+    img = _prepare_image(img, seed)
+    pipe._build_scaffold_(img, user_prompt=text_prompt)
+    save_scene(pipe.cfg, pipe.scene, SCENE_PATH, SPLAT_PATH)
+    release_memory()
+    return _viewer_camera_update(SPLAT_PATH)
+
+
+def _camera_extrinsic(viewer):
+    _require_scene()
+    if viewer is None or len(viewer) < 3:
+        raise gr.Error('Select a camera in the GS viewer first.')
+    return get_extrinsic(viewer[1], viewer[2])
+
 
 def interactive_render_splat(viewer):
-    camera_position = viewer[1]
-    camera_rotation = viewer[2]    
-    extrinsic = get_extrinsic(camera_position,camera_rotation)
-    rgb = pipe._interactive_render(extrinsic)
-    return rgb
-   
-def interactive_render_and_inpaint(viewer,seed,anchor):
-    # rendering partial images
-    camera_position = viewer[1]
-    camera_rotation = viewer[2]
-    pipe.cfg.scene.outpaint.seed = seed
-    extrinsic = get_extrinsic(camera_position,camera_rotation)
-    rgb = pipe._interactive_render_and_inpaint(extrinsic,anchor)
-    torch.cuda.empty_cache()
-    save_scene(pipe.cfg,pipe.scene,SCENE_PATH,SPLAT_PATH)
-    return rgb,str(SPLAT_PATH)
+    return pipe._interactive_render(_camera_extrinsic(viewer))
+
+
+def interactive_render_and_inpaint(viewer, seed, anchor):
+    extrinsic = _camera_extrinsic(viewer)
+    pipe._ensure_tools()
+    pipe.cfg.scene.outpaint.seed = int(seed)
+    rgb = pipe._interactive_render_and_inpaint(extrinsic, anchor)
+    _invalidate_refinement()
+    save_scene(pipe.cfg, pipe.scene, SCENE_PATH, SPLAT_PATH)
+    release_memory()
+    return rgb, _viewer_camera_update(SPLAT_PATH)
+
 
 def _interactive_step_back_():
-    scene = pipe.scene
-    scene.frames = scene.frames[:-1]
-    scene.gaussian_frames = scene.gaussian_frames[:-1]
-    pipe.scene = scene
-    save_scene(pipe.cfg,pipe.scene,SCENE_PATH,SPLAT_PATH)
-    return str(SPLAT_PATH)
+    _require_scene()
+    scaffold_frames = 2 if pipe.cfg.scene.outpaint.sign else 1
+    if len(pipe.scene.frames) <= scaffold_frames:
+        raise gr.Error('There is no added view to undo.')
+    pipe.scene.frames.pop()
+    pipe.scene.gaussian_frames.pop()
+    pipe.scene.dense_trajs = _generate_trajectory(pipe.cfg, pipe.scene)
+    _invalidate_refinement()
+    save_scene(pipe.cfg, pipe.scene, SCENE_PATH, SPLAT_PATH)
+    release_memory()
+    return _viewer_camera_update(SPLAT_PATH)
 
-def _interactive_MCS(steps,views,weight):
-    pipe.cfg,pipe.scene = load_scene(SCENE_PATH)
-    pipe._interactive_MCS_Refinement(int(steps),int(views),weight)
-    torch.cuda.empty_cache()
-    save_scene(pipe.cfg,pipe.scene,SCENE_FINAL_PATH,SPLAT_PATH)
-    return gr.update(width=pipe.scene.frames[0].W*2,
-                     height=pipe.scene.frames[0].H*2,
-                     camera_fx=pipe.scene.frames[0].intrinsic[0,0]*2,
-                     camera_fy=pipe.scene.frames[0].intrinsic[0,0]*2),\
-           str(SPLAT_PATH)
+
+def _interactive_MCS(steps, views, weight, gsopt_iters):
+    _restore_scene(SCENE_PATH)
+    pipe._ensure_tools()
+    pipe._interactive_MCS_Refinement(int(steps), int(views), weight, int(gsopt_iters))
+    save_scene(pipe.cfg, pipe.scene, SCENE_FINAL_PATH, SPLAT_PATH)
+    release_memory()
+    return _viewer_camera_update(SPLAT_PATH)
+
 
 def _interactive_render_videos():
-    if os.path.exists(SCENE_FINAL_PATH):
-        pipe.cfg,pipe.scene = load_scene(SCENE_FINAL_PATH)
-    else:
-        pipe.cfg,pipe.scene = load_scene(SCENE_PATH)
-    pipe.checkor._render_video(pipe.scene,save_dir=f"{TEMP_DIR}/temp.")
+    _restore_scene(SCENE_FINAL_PATH if Path(SCENE_FINAL_PATH).exists() else SCENE_PATH)
+    pipe.checkor._render_video(pipe.scene, save_dir=f'{TEMP_DIR}/temp.')
+    release_memory()
     return RGB_VIDEO_PATH, DPT_VIDEO_PATH
 
-def _Traj_Refine_(seed):
-    # already have several frames
-    pipe.cfg.scene.outpaint.seed = seed
-    pipe.cfg,pipe.scene = load_scene(SCENE_PATH)
-    pipe._traj_refine_()
-    save_scene(pipe.cfg,pipe.scene,SCENE_PATH,SPLAT_PATH)
-    return gr.update(width=pipe.scene.frames[0].W*2,
-                     height=pipe.scene.frames[0].H*2,
-                     camera_fx=pipe.scene.frames[0].intrinsic[0,0]*2,
-                     camera_fy=pipe.scene.frames[0].intrinsic[0,0]*2),\
-           str(SPLAT_PATH)
 
-def _E2E_VD_(img,text_prompt):
-    pipe.scene = None
-    # coarse
-    pipe._e2e_coarse_scene(img,user_prompt=text_prompt)
-    pipe.checkor._render_video(pipe.scene,save_dir=f"{TEMP_DIR}/temp.coarse.")
-    save_scene(pipe.cfg,pipe.scene,SCENE_PATH,SPLAT_PATH)
-    # refine
-    pipe._e2e_MCS_Refinement()    
-    pipe.checkor._render_video(pipe.scene,save_dir=f"{TEMP_DIR}/temp.")
-    save_scene(pipe.cfg,pipe.scene,SCENE_FINAL_PATH,SPLAT_PATH)
-    return str(SPLAT_PATH), RGB_VIDEO_PATH, DPT_VIDEO_PATH
-    
+def _Traj_Refine_(seed):
+    _restore_scene(SCENE_PATH)
+    pipe._ensure_tools()
+    pipe.cfg.scene.outpaint.seed = int(seed)
+    pipe._traj_refine_()
+    _invalidate_refinement()
+    save_scene(pipe.cfg, pipe.scene, SCENE_PATH, SPLAT_PATH)
+    release_memory()
+    return _viewer_camera_update(SPLAT_PATH)
+
+
+def _E2E_VD_(img, text_prompt, seed):
+    img = _prepare_image(img, seed)
+    pipe._e2e_coarse_scene(img, user_prompt=text_prompt)
+    save_scene(pipe.cfg, pipe.scene, SCENE_PATH, SPLAT_PATH)
+    pipe._e2e_MCS_Refinement()
+    save_scene(pipe.cfg, pipe.scene, SCENE_FINAL_PATH, SPLAT_PATH)
+    pipe.checkor._render_video(pipe.scene, save_dir=f'{TEMP_DIR}/temp.')
+    release_memory()
+    return _viewer_camera_update(SPLAT_PATH), RGB_VIDEO_PATH, DPT_VIDEO_PATH
+
+
 def _RESET_():
     pipe.scene = None
-    torch.cuda.empty_cache()
-    
+    if pipe.tools is not None:
+        pipe.tools._unload_llava_()
+        pipe.tools._unload_mcs_()
+    release_memory()
+    return None, None, None, None, None
+
+
 def _RELOAD_():
-    if os.path.exists(SCENE_PATH):
-        scene = torch.load(SCENE_PATH,weights_only=False)
-        pipe.cfg,pipe.scene = scene['cfg'],scene['scene']
-        image = Image.open(COLOR_PATH)
-        return gr.update(width=pipe.scene.frames[0].W*2,
-                  height=pipe.scene.frames[0].H*2,
-                  camera_fx=pipe.scene.frames[0].intrinsic[0,0]*2,
-                  camera_fy=pipe.scene.frames[0].intrinsic[0,0]*2),\
-               image,SPLAT_PATH,pipe.cfg.scene.outpaint.seed
-    
+    _restore_scene(SCENE_PATH)
+    save_splat(pipe.scene, SPLAT_PATH)
+    image = Image.open(COLOR_PATH).convert('RGB') if Path(COLOR_PATH).exists() else None
+    return _viewer_camera_update(SPLAT_PATH), image, pipe.cfg.scene.outpaint.seed
+
+
 # --------------------------
 # Interface app
 # --------------------------
 with gr.Blocks(title="3D Viewer Interface",theme=gr.themes.Soft()) as demo:
-    # State indicator
-    
-    with gr.Row():
-        gr.Markdown(
-            """
-            # [ICCV 2025] VistaDream: Sampling multiview consistent images for single-view scene reconstruction
-            ### [Haiping Wang](https://hpwang-whu.github.io/), [Yuan Liu](https://liuyuan-pal.github.io/), [Ziwei Liu](https://liuziwei7.github.io/), [Wenping Wang](https://www.cs.hku.hk/people/academic-staff/wenping), [Zhen Dong](https://dongzhenwhu.github.io/index.html), [Bisheng Yang](https://3s.whu.edu.cn/info/1025/1415.htm)
-            - Paper: https://arxiv.org/abs/2410.16892
-            - Code: https://github.com/WHU-USI3DV/VistaDream
-            - Project Page: https://vistadream-project-page.github.io/
-            
-            ### User Guidance:
-            - First, upload the given image.
-            - Second, click ``Build Scaffold'' to generate a scaffold on the given image. The Scaffold will be shown in ``GS-Viewer'' box.
-            - Second, use ``Building Camera Trajectory'' Panel to design your own trajectory by selecting several anchor cameras. We suggest select less than 4 anchor views for VistaDream will interpolate more view by itself. To define a camera:
-                - Move the camera in ``GS-Viewer'' box to select a ideal view by mouse moving and ``WASD''.
-                - Click ``Preview the view'' to render the view for check. The rendered view will be shown above the button.
-                - Click ``Inpaint the view'' to select and inpaint on this view. The inpainted view will be shown above the button.
-                - Click ``Re-select the view'' if you find the inpainted view is not ideal.
-            - After selecting sevel anchor views, click ``Generate a coarse scene'' button to generate a coarse gaussian scene, which will be shown in the ``GS-Viewer'' box.
-            - [Optional] You can click ``Render RGB and Depth videos'' button to check the videos rendered from the coarse scene.
-            - Then, click ``Refine the scene by MCS'' to optimize the scene by MCS method. In ``MCS parameters'' panel, you can mannually set the MCS parameters on number of views, MCS steps, and rectification weight.
-            - You can click ``Render RGB and Depth videos'' button to check the videos rendered from the refined scene.
-            - [Note] If you donnot wanna any human interaction, click ``End-to-end VistaDream'' after you upload the image. We will use ``Spiral'' trajectory by default and directly obtain the refined scene.
-            
-            ------------------
-            
-            """
-        )
-    
-    current_splat = gr.State()
+    gr.Markdown(
+        """
+        # VistaDream: Interactive Single-View Scene Reconstruction
+        [ICCV 2025 paper](https://arxiv.org/abs/2410.16892) ·
+        [Project page](https://vistadream-project-page.github.io/) ·
+        [Original code](https://github.com/WHU-USI3DV/VistaDream)
+
+        Haiping Wang, Yuan Liu, Ziwei Liu, Wenping Wang, Zhen Dong, Bisheng Yang
+
+        Upload an image and **Build Scaffold**. Move the camera in **GS-Viewer**,
+        preview a view, then **Inpaint the view** to add it. Select a few anchor
+        views and **Generate a coarse scene**; use **Refine the scene by MCS**
+        for refinement and export RGB/depth videos with the video button.
+
+        Click the viewer to focus camera controls: drag to orbit, right/middle-drag
+        to pan, scroll to zoom, WASD to move, Space/C to move vertically, Shift to
+        accelerate. **Re-select the view** undoes the last added frame.
+
+        **End-to-end VistaDream** uses a Spiral trajectory automatically.
+        **ReSet** clears the viewer; **ReLoad** restores the saved coarse scene.
+        """
+    )
+
     # load inputs
-    
+
     ########################## ALL RESULTS
     with gr.Row():
         gr.Markdown(
@@ -194,7 +231,7 @@ with gr.Blocks(title="3D Viewer Interface",theme=gr.themes.Soft()) as demo:
             text_prompt = gr.Textbox(
                 label='Scene text prompt (optional)',
                 lines=3,
-                placeholder='If provided, this prompt is used directly and LLaVA captioning is skipped.'
+                placeholder='Describe the scene to guide inpainting. Leave blank to use the default prompt.'
             )
         with gr.Column():
             rgb_video = gr.Video(label="Output RGB renderings")
@@ -210,7 +247,7 @@ with gr.Blocks(title="3D Viewer Interface",theme=gr.themes.Soft()) as demo:
             MED_btn = gr.Button("Build Scaffold",variant='primary')
         with gr.Column():
             VIDEO_btn = gr.Button("Rendering RGB and Depth videos", variant="primary")
-    
+
     ########################### HUMAN TRAJECTORY
     with gr.Row():
         gr.Markdown(
@@ -218,31 +255,34 @@ with gr.Blocks(title="3D Viewer Interface",theme=gr.themes.Soft()) as demo:
             ------------------------------
             ### Building Camera Trajectory
             """)
-        
+
+    with gr.Row():
+        viewer = Model3DGSCamera(
+            label="GS-Viewer(Down-sampled)",
+            width=768,
+            height=512,
+            camera_width=768,
+            camera_height=512,
+            camera_fx=750,
+            camera_fy=750,
+            camera_near=NEAR,
+            camera_far=FAR,
+            interactive=True,
+            elem_id="gs-viewer",
+        )
     with gr.Row():
         with gr.Column():
-            viewer = Model3DGSCamera(
-                label="GS-Viewer(Down-sampled)",
-                width=1024,
-                height=1024,
-                camera_fx=1000,  
-                camera_near=NEAR,
-                camera_far=FAR,
-                interactive=True)
+            render_img = gr.Image(label="Rendering result")
         with gr.Column():
-            with gr.Row():
-                with gr.Column():
-                    render_img = gr.Image(label="Rendering result")
-                with gr.Column():
-                    inpaint_img = gr.Image(label="Inpainting result")
-            with gr.Row():
-                with gr.Column():
-                    RENDER_btn = gr.Button("Preview the view", variant="primary")
-                with gr.Column():
-                    INPAINT_btn = gr.Button("Inpaint the view", variant="primary")
-                with gr.Column():
-                    ANCHOR_cam = gr.Checkbox(label="Select this camera as rendering anchor?", value=True)
-                    RETURN_btn = gr.Button("Re-select the view", variant="primary")
+            inpaint_img = gr.Image(label="Inpainting result")
+    with gr.Row():
+        with gr.Column():
+            RENDER_btn = gr.Button("Preview the view", variant="primary")
+        with gr.Column():
+            INPAINT_btn = gr.Button("Inpaint the view", variant="primary")
+        with gr.Column():
+            ANCHOR_cam = gr.Checkbox(label="Select this camera as rendering anchor?", value=True)
+            RETURN_btn = gr.Button("Re-select the view", variant="primary")
 
     ########################### VistaDream
     with gr.Row():
@@ -251,7 +291,7 @@ with gr.Blocks(title="3D Viewer Interface",theme=gr.themes.Soft()) as demo:
             ------------------------------
             ### Two-Stage VistaDream
             """)
-        
+
     with gr.Row():
         with gr.Column():
             VDREFINE_btn = gr.Button("Generate a coarse scene", variant="primary")
@@ -260,43 +300,74 @@ with gr.Blocks(title="3D Viewer Interface",theme=gr.themes.Soft()) as demo:
         with gr.Column():
             E2E_btn = gr.Button("[No Interaction] End-to-end VistaDream",variant='primary')
     with gr.Row():
-        with gr.Accordion("VistDream parameters", open=True):
-            vd_seed = gr.Slider(minimum=0, maximum=2147483647261, value=31641916026, step=561, label="# Seed", interactive=True)
-            mcs_steps = gr.Slider(minimum=0, maximum=12, value=9, step=1, label="# MCS Refine Steps", interactive=True)
-            mcs_views = gr.Slider(minimum=5, maximum=15, value=10, step=2, label="# MCS Refine Views", interactive=True)
-            mcs_weigt = gr.Slider(minimum=0, maximum=1., value=0.5, step=0.05, label="# MCS Refine Rectification Weight", interactive=True)        
-            
+        with gr.Accordion("VistaDream parameters", open=True):
+            vd_seed = gr.Slider(minimum=0, maximum=2147483647261, value=31641916026, step=1, label="# Seed", interactive=True)
+            mcs_steps = gr.Slider(minimum=2, maximum=16, value=9, step=1, label="# MCS Refine Steps", interactive=True)
+            mcs_views = gr.Slider(minimum=5, maximum=20, value=10, step=2, label="# MCS Refine Views", interactive=True)
+            mcs_weigt = gr.Slider(minimum=0, maximum=1., value=0.5, step=0.05, label="# MCS Refine Rectification Weight", interactive=True)
+            mcs_gsopt_iters = gr.Slider(
+                minimum=16,
+                maximum=512,
+                value=int(cfg.scene.mcs.gsopt_iters),
+                step=16,
+                label="# GS Optimization Iterations per MCS Step",
+                interactive=True,
+            )
+
     # task
-    RES_btn.click(fn=_RESET_)
+    RES_btn.click(fn=_RESET_, outputs=[viewer,render_img,inpaint_img,rgb_video,dpt_video], concurrency_id=PIPELINE_CONCURRENCY_ID, concurrency_limit=1)
     REL_btn.click(fn=_RELOAD_,
-                  outputs=[viewer,input_img,viewer,vd_seed])
+                  outputs=[viewer,input_img,vd_seed],
+                  concurrency_id=PIPELINE_CONCURRENCY_ID, concurrency_limit=1)
     E2E_btn.click(fn=_E2E_VD_,
-                  inputs=[input_img,text_prompt],
-                  outputs=[viewer,rgb_video,dpt_video])
-    MED_btn.click(fn=interactive_build_scaffold, 
-                  inputs=[input_img,vd_seed,text_prompt], 
-                  outputs=[viewer,viewer])
-    RENDER_btn.click(fn=interactive_render_splat, 
-                     inputs=[viewer], 
-                     outputs=[render_img])
-    INPAINT_btn.click(fn=interactive_render_and_inpaint, 
-                    inputs=[viewer,vd_seed,ANCHOR_cam], 
-                    outputs=[inpaint_img,viewer])
-    RETURN_btn.click(fn=_interactive_step_back_, 
-                    inputs=[], 
-                    outputs=[viewer])
+                  inputs=[input_img,text_prompt,vd_seed],
+                  outputs=[viewer,rgb_video,dpt_video],
+                  concurrency_id=PIPELINE_CONCURRENCY_ID, concurrency_limit=1)
+    MED_btn.click(fn=interactive_build_scaffold,
+                  inputs=[input_img,vd_seed,text_prompt],
+                  outputs=[viewer],
+                  concurrency_id=PIPELINE_CONCURRENCY_ID, concurrency_limit=1)
+    RENDER_btn.click(fn=interactive_render_splat,
+                     inputs=[viewer],
+                     outputs=[render_img],
+                     concurrency_id=PIPELINE_CONCURRENCY_ID, concurrency_limit=1)
+    INPAINT_btn.click(fn=interactive_render_and_inpaint,
+                    inputs=[viewer,vd_seed,ANCHOR_cam],
+                    outputs=[inpaint_img,viewer],
+                    concurrency_id=PIPELINE_CONCURRENCY_ID, concurrency_limit=1)
+    RETURN_btn.click(fn=_interactive_step_back_,
+                    inputs=[],
+                    outputs=[viewer],
+                    concurrency_id=PIPELINE_CONCURRENCY_ID, concurrency_limit=1)
     VDREFINE_btn.click(fn=_Traj_Refine_,
                        inputs=[vd_seed],
-                       outputs=[viewer,viewer])
+                       outputs=[viewer],
+                       concurrency_id=PIPELINE_CONCURRENCY_ID, concurrency_limit=1)
     REFINE_btn.click(fn=_interactive_MCS,
-                     inputs=[mcs_steps,mcs_views,mcs_weigt],
-                     outputs=[viewer,viewer])
+                     inputs=[mcs_steps,mcs_views,mcs_weigt,mcs_gsopt_iters],
+                     outputs=[viewer],
+                     concurrency_id=PIPELINE_CONCURRENCY_ID, concurrency_limit=1)
     VIDEO_btn.click(fn=_interactive_render_videos,
-                    outputs=[rgb_video,dpt_video])
+                    outputs=[rgb_video,dpt_video],
+                    concurrency_id=PIPELINE_CONCURRENCY_ID, concurrency_limit=1)
 
 # # --------------------------
 # Launch
 # --------------------------
 if __name__ == "__main__":
-    demo.launch()
-    
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--config', help='YAML config path (default: pipe/cfgs/basic.yaml)')
+    parser.add_argument('--output-dir', help='Scene directory; reuse it with ReLoad after restarting')
+    parser.add_argument('--traj-type', choices=['interp', 'spline'], default='interp')
+    parser.add_argument('--host', default='127.0.0.1')
+    parser.add_argument('--port', type=int, default=7860)
+    parser.add_argument('--share', action='store_true')
+    args = parser.parse_args()
+    configure_app(args.config, args.output_dir, args.traj_type)
+    mcs_gsopt_iters.value = int(cfg.scene.mcs.gsopt_iters)
+    os.chdir(PROJECT_ROOT)
+    print(f'Scene output directory: {TEMP_DIR}')
+    demo.queue(default_concurrency_limit=1).launch(
+        server_name=args.host, server_port=args.port, share=args.share,
+        allowed_paths=[TEMP_DIR],
+    )

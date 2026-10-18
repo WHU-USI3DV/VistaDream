@@ -1,25 +1,37 @@
-import os,sys
-currect = os.getcwd()
-reference = f'{currect}/tools/Fooocus'
-sys.path.insert(0,reference)
+import os
+import sys
+from pathlib import Path
+
+FOOOCUS_ROOT = Path(__file__).resolve().parents[3] / 'tools' / 'Fooocus'
+sys.path.insert(0, str(FOOOCUS_ROOT))
 
 
 class Fooocus_Tool():
     def __init__(self,fooocus_ckpts='tools/Fooocus/models') -> None:
-        self._set_ckpt(fooocus_ckpts)
-        self._load_model()
-        
+        # Fooocus reads presets/configuration from cwd and parses process argv.
+        # Isolate that initialization from INTERFACE's own command-line options.
+        fooocus_ckpts = str(Path(fooocus_ckpts).resolve())
+        previous_cwd, previous_argv = Path.cwd(), sys.argv
+        try:
+            os.chdir(FOOOCUS_ROOT)
+            sys.argv = [previous_argv[0]]
+            self._set_ckpt(str(Path(fooocus_ckpts).resolve()))
+            self._load_model()
+        finally:
+            os.chdir(previous_cwd)
+            sys.argv = previous_argv
+
     def _set_ckpt(self,ckpts):
         from fooocus_preset import set_ckpt_dir
         set_ckpt_dir(ckpts)
-    
+
     def _load_model(self):
         from fooocus_command import Fooocus
         self.tool = Fooocus()
-    
+
     def __call__(self,
                  image_number = 1,
-                 prompt = '', 
+                 prompt = '',
                  negative_prompt = '',
                  outpaint_selections = ['Left', 'Right', 'Top', 'Bottom'],
                  outpaint_extend_times = 0.4,

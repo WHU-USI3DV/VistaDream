@@ -1,12 +1,12 @@
 import imageio
 import matplotlib
-from ops.utils import *
+from ops.utils.utils import *
 from ops.gs.basic import *
 
 class Check():
     def __init__(self) -> None:
         pass
-        
+
     def _visual_pcd(self,scene:Gaussian_Scene):
         xyzs,rgbs = [],[]
         for i,gf in enumerate(scene.gaussian_frames):
@@ -18,7 +18,7 @@ class Check():
         xyzs = np.concatenate(xyzs,axis=0)
         rgbs = np.concatenate(rgbs,axis=0)
         visual_pcd(xyzs,color=rgbs,normal=True)
-        
+
     @torch.no_grad()
     def _render_video(self,scene:Gaussian_Scene,save_dir='./',colorize=False):
         # render 5times frames
@@ -26,17 +26,17 @@ class Check():
         for f in scene.frames:
             if not f.hole_painting:
                 frames.append(f)
-        nframes = len(frames)*25
+        nframes = len(frames)*120
         video_trajs = scene.dense_trajs
         H,W,intrinsic = scene.frames[0].H,scene.frames[0].W,deepcopy(scene.frames[0].intrinsic)
         if H<W:
-            if H>512:
-                ratio = 512/H
+            if W>832:
+                ratio = 832/W
                 W,H = int(W*ratio),int(H*ratio)
                 intrinsic[0:2] = intrinsic[0:2]*ratio
         else:
-            if W>512:
-                ratio = 512/W
+            if H>832:
+                ratio = 832/H
                 W,H = int(W*ratio),int(H*ratio)
                 intrinsic[0:2] = intrinsic[0:2]*ratio
         # render
@@ -54,7 +54,7 @@ class Check():
         rgbs = np.stack(rgbs, axis=0)
         dpts = np.stack(dpts, axis=0)
         valid_dpts = dpts[dpts>0.]
-        
+
         _min = np.percentile(valid_dpts, 1)
         _max = np.percentile(valid_dpts,99)
         dpts = (dpts-_min) / (_max-_min)
@@ -68,6 +68,6 @@ class Check():
         else:
             dpts = dpts[...,None].repeat(3,axis=-1)
             dpts = (dpts*255).astype(np.uint8)
-            
+
         imageio.mimwrite(f'{save_dir}video_rgb.mp4',rgbs,fps=20)
         imageio.mimwrite(f'{save_dir}video_dpt.mp4',dpts,fps=20)

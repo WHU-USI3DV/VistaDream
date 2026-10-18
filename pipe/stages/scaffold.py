@@ -8,14 +8,14 @@ from ops.utils.utils import *
 from ops.gs.train import GS_Train_Tool
 from ops.trajs import _generate_trajectory
 from ops.gs.basic import Frame,Gaussian_Scene
-        
+
 class Scaffold_Phase():
     '''
     yield prompt
     build scaffold
     create trajectory
     '''
-    
+
     def __init__(self,cfg,tools) -> None:
         self.cfg = cfg
         self.tools = tools
@@ -43,7 +43,7 @@ class Scaffold_Phase():
 
             query = '<image>\n \
                     USER: Detaily imagine and describe the scene this image taken from? \
-                    \n ASSISTANT: This image is taken from a scene of ' 
+                    \n ASSISTANT: This image is taken from a scene of '
             try:
                 print('Inpaint-Caption[1/3] Move llava.model to GPU...')
                 self.tools.llava.model.to('cuda')
@@ -59,14 +59,17 @@ class Scaffold_Phase():
                 print(f'[WARN] LLaVA prompt generation failed: {e}')
                 self.prompt = 'A beautiful scene with clear objects and coherent layouts.'
             finally:
-                try:
-                    print('Inpaint-Caption[3/3] Move llava.model to CPU...')
-                    self.tools.llava.model.to('cpu')
-                except Exception:
-                    pass
-                torch.cuda.empty_cache()
+                print('Inpaint-Caption[3/3] Unload LLaVA...')
+                if hasattr(self.tools, '_unload_llava_'):
+                    self.tools._unload_llava_()
+                else:
+                    self.tools.llava = None
+                    torch.cuda.empty_cache()
         else:
-            self.tools.llava = None
+            if hasattr(self.tools, '_unload_llava_'):
+                self.tools._unload_llava_()
+            else:
+                self.tools.llava = None
             self.prompt = 'A beautiful scene with clear objects and coherent layouts.'
 
     def _wo_zoom_out_scaffold(self,rgb):
@@ -114,14 +117,14 @@ class Scaffold_Phase():
         scene = Gaussian_Scene(self.cfg)
         scene._add_trainable_frame(input_frame,require_grad=True)
         scene._add_trainable_frame(outpaint_frame,require_grad=True)
-        scene = GS_Train_Tool(scene,iters=self.cfg.scene.gaussian.opt_iters_per_frame)(scene.frames) 
+        scene = GS_Train_Tool(scene,iters=self.cfg.scene.gaussian.opt_iters_per_frame)(scene.frames)
         return scene
-    
+
     def _generate_traj(self,scene:Gaussian_Scene):
         dense_trajs = _generate_trajectory(self.cfg,scene)
         scene.dense_trajs = dense_trajs
         return scene
-    
+
     def __call__(self, rgb, intrinsic = None, user_prompt = None):
         rgb = np.array(rgb)[...,0:3]
         # describe
@@ -135,4 +138,3 @@ class Scaffold_Phase():
         save_pic(scene.frames[-1].rgb,self.coarse_interval_rgb_fn)
         scene = self._generate_traj(scene)
         return scene
-            

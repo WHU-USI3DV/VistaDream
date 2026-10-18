@@ -1,0 +1,189 @@
+diff --git a/flex_gemm/kernels/triton/hashmap.py b/flex_gemm/kernels/triton/hashmap.py
+--- a/flex_gemm/kernels/triton/hashmap.py
++++ b/flex_gemm/kernels/triton/hashmap.py
+@@ -105,20 +105,7 @@ def _scalar_hash_32bit(v: tl.tensor) -> tl.tensor:
+ @triton.jit
+ def _vec_pack_little_endian_to_int32(vec: tl.tensor) -> tl.tensor:
+     """Pack a little-endian integer vector into int32 words."""
+-    tl.static_assert(
+-        vec.dtype.itemsize == 1 or vec.dtype.itemsize == 2 or vec.dtype.itemsize == 4,
+-        "Unsupported query_vec element width",
+-    )
+-    if vec.dtype.itemsize == 4:
+-        return vec.to(tl.int32)
+-
+-    if vec.dtype.itemsize == 2:
+-        vec_u16 = tl.reshape(tl.cast(vec, tl.uint16, bitcast=True), *vec.shape[:-1], vec.shape[-1] // 2, 2)
+-        return tl.sum(vec_u16.to(tl.uint32) << (tl.arange(0, 2) << 4), axis=-1).to(tl.int32)
+-
+-    if vec.dtype.itemsize == 1:
+-        vec_u8 = tl.reshape(tl.cast(vec, tl.uint8, bitcast=True), *vec.shape[:-1], vec.shape[-1] // 4, 4)
+-        return tl.sum(vec_u8.to(tl.uint32) << (tl.arange(0, 4) << 3), axis=-1).to(tl.int32)
++    return vec.to(tl.int32)
+ 
+ 
+ # NOTE: an earlier version of this file used a custom ``tl.inline_asm_elementwise``
+@@ -139,9 +126,8 @@ def _hashmap_build_kernel_32bit(
+     D: tl.constexpr,
+     BLOCK_SIZE: tl.constexpr,
+ ):
+-    tl.static_assert(D * keys_ptr.dtype.element_ty.itemsize % 4 == 0, "keys byte width must be divisible by 4")
+     keys_ptr_32 = tl.cast(keys_ptr, tl.pointer_type(tl.int32))
+-    D_32: tl.constexpr = D * keys_ptr.dtype.element_ty.itemsize // 4
++    D_32: tl.constexpr = D
+ 
+     pid = tl.program_id(0)
+     idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+@@ -196,7 +182,7 @@ def _hashmap_lookup_inline_32bit(
+     """
+     keys_ptr_32 = tl.cast(keys_ptr, tl.pointer_type(tl.int32))
+     query_vec_32 = _vec_pack_little_endian_to_int32(query_vec)
+-    D_32: tl.constexpr = D * query_vec.dtype.itemsize // 4
++    D_32: tl.constexpr = D
+     tl.static_assert(D_32 == query_vec_32.shape[-1], "Invalid query_vec shape after packing to int32. Check D and input dtype.")
+ 
+     SLOT_BIT_MASK = tl.cast(hashmap_size - 1, tl.int32)
+@@ -306,9 +292,8 @@ def _hashmap_unique_kernel_32bit(
+     whether this lane's key is the canonical (first inserted) occurrence,
+     which saves a separate comparison kernel on the host side.
+     """
+-    tl.static_assert(D * keys_ptr.dtype.element_ty.itemsize % 4 == 0, "keys byte width must be divisible by 4")
+     keys_ptr_32 = tl.cast(keys_ptr, tl.pointer_type(tl.int32))
+-    D_32: tl.constexpr = D * keys_ptr.dtype.element_ty.itemsize // 4
++    D_32: tl.constexpr = D
+ 
+     pid = tl.program_id(0)
+     idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+diff --git a/flex_gemm/kernels/triton/neighbor_cache/neighbor_map.py b/flex_gemm/kernels/triton/neighbor_cache/neighbor_map.py
+--- a/flex_gemm/kernels/triton/neighbor_cache/neighbor_map.py
++++ b/flex_gemm/kernels/triton/neighbor_cache/neighbor_map.py
+@@ -34,8 +34,8 @@ def _hashmap_find_store_neighbor_map_inline(
+     mask_M: tl.tensor,
+     offs_V: tl.tensor,
+     mask_V: tl.tensor,
+-    coord_stride_vec: tl.tensor | None,
+-    coord_offset_vec: tl.tensor | None,
++    coord_stride_vec,
++    coord_offset_vec,
+     neighbor_map_ptr: tl.pointer_type,
+     V: int,
+     D: tl.constexpr,
+@@ -114,7 +114,7 @@ def _hashmap_build_neighbor_map_from_kernel_delta_kernel(
+     coords_out_ptr: tl.const,
+     delta_ptr: tl.const,
+     neighbor_map_ptr: tl.pointer_type,
+-    coord_stride_offset_ptr: tl.tensor | None,
++    coord_stride_offset_ptr,
+     M: int,
+     V: int,
+     D: tl.constexpr,
+@@ -173,7 +173,7 @@ def _hashmap_build_neighbor_map_kernel_size_dilation_4d_triton_kernel(
+     coords_in_ptr: tl.const,
+     coords_out_ptr: tl.const,
+     neighbor_map_ptr: tl.pointer_type,
+-    coord_stride_offset_ptr: tl.pointer_type | None,
++    coord_stride_offset_ptr,
+     K0: int, K1: int, K2: int, K3: int,
+     KD0: int, KD1: int, KD2: int, KD3: int,
+     M: int,
+@@ -240,7 +240,7 @@ def _hashmap_build_neighbor_map_kernel_size_dilation_triton_kernel(
+     M: int,
+     neighbor_map_ptr: tl.pointer_type,
+     kernel_size_dilation_ptr: tl.pointer_type,
+-    coord_stride_offset_ptr: tl.pointer_type | None,
++    coord_stride_offset_ptr,
+     V: int,
+     D: tl.constexpr,
+     BLOCK_V: tl.constexpr,
+diff --git a/flex_gemm/kernels/triton/neighbor_cache/output_coords.py b/flex_gemm/kernels/triton/neighbor_cache/output_coords.py
+--- a/flex_gemm/kernels/triton/neighbor_cache/output_coords.py
++++ b/flex_gemm/kernels/triton/neighbor_cache/output_coords.py
+@@ -194,8 +194,8 @@ def get_output_coords_kernel_size_dilation_strided_torch(
+ def _expand_output_coords_4d_triton_kernel(
+     coords_in_ptr: tl.const,        # (N, D=4) int32 input coords
+     out_candidates_ptr: tl.pointer_type,   # (N * V, D=4) int32 output candidates buffer
+-    valid_mask_ptr: tl.pointer_type | None,       # (N * V,) int8 valid mask
+-    boundary_ptr: tl.const | None,        # (8,) = bmin[4] ++ bmax[4], or None
++    valid_mask_ptr,       # (N * V,) int8 valid mask
++    boundary_ptr,        # (8,) = bmin[4] ++ bmax[4], or None
+     K0: tl.constexpr, K1: tl.constexpr, K2: tl.constexpr, K3: tl.constexpr,
+     KD0: int, KD1: int, KD2: int, KD3: int,
+     S0: int, S1: int, S2: int, S3: int,
+@@ -266,10 +266,10 @@ def _expand_output_coords_4d_triton_kernel(
+ def _expand_output_coords_nd_triton_kernel(
+     coords_in_ptr: tl.const,        # (N, D) int32 input coords
+     out_candidates_ptr: tl.pointer_type,   # (N * V, D) int32 output candidates buffer
+-    valid_mask_ptr: tl.pointer_type | None,       # (N * V,) int8 valid mask
++    valid_mask_ptr,       # (N * V,) int8 valid mask
+     kernel_size_dilation_ptr: tl.const,               # (2*D,) kernel_size[D] ++ dilation[D]
+-    stride_offset_ptr: tl.const | None,  # (2*D,) stride[D] ++ offset[D], or None
+-    boundary_ptr: tl.const | None,        # (2*D,) bmin[D] ++ bmax[D], or None
++    stride_offset_ptr,  # (2*D,) stride[D] ++ offset[D], or None
++    boundary_ptr,        # (2*D,) bmin[D] ++ bmax[D], or None
+     N: int,
+     V: int,
+     D: tl.constexpr,
+@@ -538,8 +538,8 @@ def _get_output_coords_delta_triton_kernel(
+     out_candidates_ptr,   # (N * V, D) coord-dtype output candidates buffer
+     valid_mask_ptr,       # (N * V,) int8 valid mask
+     delta_ptr,                                  # (V, D) coord-dtype kernel deltas
+-    stride_offset_ptr: tl.pointer_type | None,  # (2*D,) stride[D] ++ offset[D], or None
+-    boundary_ptr: tl.pointer_type | None,        # (2*D,) bmin[D] ++ bmax[D], or None
++    stride_offset_ptr,  # (2*D,) stride[D] ++ offset[D], or None
++    boundary_ptr,        # (2*D,) bmin[D] ++ bmax[D], or None
+     N: int,
+     V: int,
+     D: tl.constexpr,
+@@ -818,13 +818,13 @@ def get_output_coords_kernel_delta(
+ def _strict_downsample_output_coords_kernel(
+     input_coords_ptr,                            # (N, D) coord dtype
+     shift_stride_ptr,                            # (2*D,) coord dtype = shift[D] ++ stride[D] (stride == kernel_size)
+-    boundary_ptr: tl.pointer_type | None,        # (2*D,) coord dtype, or None
++    boundary_ptr,        # (2*D,) coord dtype, or None
+     hashmap_ptr,                                 # (hashmap_size,) int32, init -1
+     candidates_ptr,                              # (N, D) coord dtype — canonical lanes only
+     edge_kernel_ptr,                             # (N,)   int32
+     indices_ptr,                                 # (N,)   int32 — canonical input idx for each valid lane
+     is_canonical_ptr,                            # (N,)   int8
+-    valid_mask_ptr: tl.pointer_type | None,      # (N,)   int8, or None (only when boundary)
++    valid_mask_ptr,      # (N,)   int8, or None (only when boundary)
+     hashmap_size: int,
+     N: int,
+     D: tl.constexpr,
+@@ -1110,10 +1110,10 @@ def _fused_expand_unique_4d_triton_kernel(
+     coords_in_ptr: tl.const,                              # (N, D=4) coord dtype, padded
+     hashmap_ptr: tl.pointer_type,                         # (hashmap_size,) int32, init -1
+     out_candidates_ptr: tl.pointer_type,                  # (N*V, D=4) coord dtype (canonical lanes only)
+-    valid_mask_ptr: tl.pointer_type | None,     # (N*V,) int8
++    valid_mask_ptr,     # (N*V,) int8
+     indices_ptr: tl.pointer_type,               # (N*V,) int32 — canonical out_idx for each lane
+     is_canonical_ptr: tl.pointer_type,          # (N*V,) int8
+-    boundary_ptr: tl.pointer_type | None,        # (8,) = bmin[4] ++ bmax[4], or None
++    boundary_ptr,        # (8,) = bmin[4] ++ bmax[4], or None
+     hashmap_size: int,
+     K0: tl.constexpr, K1: tl.constexpr, K2: tl.constexpr, K3: tl.constexpr,
+     KD0: int, KD1: int, KD2: int, KD3: int,
+diff --git a/flex_gemm/kernels/triton/neighbor_cache/post_process.py b/flex_gemm/kernels/triton/neighbor_cache/post_process.py
+--- a/flex_gemm/kernels/triton/neighbor_cache/post_process.py
++++ b/flex_gemm/kernels/triton/neighbor_cache/post_process.py
+@@ -133,6 +133,11 @@ def neighbor_map_valid_signal(
+     return valid_signal_i, valid_signal_o, valid_signal_seg
+ 
+ 
++@triton.jit
++def _bitwise_or(left, right):
++    return left | right
++
++
+ @triton.jit
+ def _reduce_gray_code_triton_kernel(
+     gray_code_ptr: tl.const,
+@@ -148,7 +153,7 @@ def _reduce_gray_code_triton_kernel(
+     sorted_offs = tl.load(sorted_idx_ptr + offs, mask=mask_n, other=0)
+     gray_code = tl.load(gray_code_ptr + sorted_offs, mask=mask_n, other=0).to(tl.uint32)
+ 
+-    reduced_code = tl.reduce_or(gray_code, axis=0) 
++    reduced_code = tl.reduce(gray_code, axis=0, combine_fn=_bitwise_or)
+     seglen = tl.sum((reduced_code >> tl.arange(0, 32)) & 1, axis=0).to(tl.int32) # popcount of acc. Inline ASM does not improve speed.
+ 
+     tl.store(reduced_code_ptr + pid, reduced_code)

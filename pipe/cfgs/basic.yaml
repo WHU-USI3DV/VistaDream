@@ -3,7 +3,7 @@ name: basic
 model:
   sky:
     keep: True
-    value: 1e5 # to update
+    value: 1e5 # updated from the scaffold depth
     mask2former:
       ckpt: "facebook/mask2former-swin-large-ade-semantic"
   vlm:
@@ -11,46 +11,50 @@ model:
       ckpt: 'llava-hf/bakLlava-v1-hf' # downloaded from hugging face
       offline: False # True: only load from local cache/path, no network access
   dpt:
-    dpt_pro:
-      ckpt: 'tools/DepthPro/checkpoints/depth_pro.pt'
-    daprior:
-      mde: 'tools/DAAnyPrior/checkpoints/depth_anything_v2_vitb.pth'
-      dap: 'tools/DAAnyPrior/checkpoints/prior_depth_anything_vitb.pth'
-    vggt:
-      ckpt: 'tools/VGGT/checkpoints/model.pt'
+    moge3:
+      ckpt: 'Ruicheng/moge-3-vitl'
+      revision: '184008f877d7ad1ad4c2cd2182a9bd1f63d0e5be'
+      resolution_level: 9
+      refine_steps: 3
+      use_fp16: True
+    lingbot:
+      ckpt: 'robbyant/lingbot-depth-pretrain-vitl-14-v0.5'
+      revision: '79204ed6b837f4fdd192cf563e59481fecfa0295'
+      resolution_level: 9
+      preserve_known: True
+      offline: False
   paint:
     fooocus:
       ckpts: 'tools/Fooocus/models'
   optimize:
-    sd: 'sd-legacy/stable-diffusion-v1-5' # downloaded from hugging face
-    lcm: 'tools/StableDiffusion/lcm_ckpt/pytorch_lora_weights.safetensors'
+    sd: 'stable-diffusion-v1-5/stable-diffusion-v1-5'
+    lcm: 'latent-consistency/lcm-lora-sdv1-5'
 
 tools:
-  preload: ['llava','rgb_inpaint','dpt_inpaint','mcs']
+  preload: ['rgb_inpaint','dpt_inpaint','mcs']
 
 scene:
   input:
-    rgb: 'nvknaonldm'
-    rgbs: ['data/sd_readingroom/color.png','data/sd_readingroom/color.png'] # for sparse only
-    resize_long_edge: 512
+    rgb: '' # set by INTERFACE when an image is uploaded
+    resize_long_edge: 768
 
   inpaint:
     alpha_thres: 0.7
 
   outpaint:
     sign: True
-    lvm_prompt: True
+    lvm_prompt: False
     outpaint_selections: ['Left','Right','Top','Bottom']
-    outpaint_extend_times: 0.5
-    seed: 16165035611626588888888
-  
+    outpaint_extend_times: 0.4
+    seed: 31641916026
+
   reconstruction:
     type: 'mdi'
-    keep_occlu: False
-    edge_filter_times: 0.1
+    keep_occlu: True
+    edge_filter_times: 0.03
 
-  traj: 
-    n_sample: 10
+  traj:
+    n_sample: 16
     traj_type: 'spiral' # for 'rot' we suggest large n_sample like 25.
     near_percentage: 5
     far_percentage: 95
@@ -59,11 +63,10 @@ scene:
 
   gaussian:
     opt_iters_per_frame: 256
-  
+
   mcs:
     total_steps: 50
-    steps:  9 
+    steps:  10
     n_view: 10
     rect_w: 0.5
-    gsopt_iters: 192
-  
+    gsopt_iters: 256

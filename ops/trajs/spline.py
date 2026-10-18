@@ -3,18 +3,18 @@ import numpy as np
 from .basic import Traj_Base
 
 class Spline(Traj_Base):
-    
+
     def __init__(self, scene=None, nframe=100):
         super().__init__(scene, nframe)
         # special
         self.spline_degree=5
         self.smoothness=.03
         self.rot_weight=.1
-        
+
     def normalize(self, x):
         """Normalization helper function."""
         return x / np.linalg.norm(x)
-    
+
     def viewmatrix(self, lookdir, up, position):
         """Construct lookat view matrix."""
         vec2 = self.normalize(lookdir)
@@ -35,7 +35,7 @@ class Spline(Traj_Base):
         T = np.array([self.viewmatrix(p - l, u - p, p) for p, l, u in points])
         T = np.concatenate([T,np.array([[[0,0,0,1]]]*len(T))],axis=1)
         return T
-    
+
     def interp(self, points, n, k, s):
         """Runs multidimensional B-spline interpolation on the input points."""
         sh = points.shape
@@ -68,7 +68,7 @@ class Spline(Traj_Base):
                             n_interp * (points.shape[0] - 1),
                             k=self.spline_degree,
                             s=self.smoothness)
-        return self.points_to_poses(new_points) 
+        return self.points_to_poses(new_points)
 
     def __call__(self):
         poses = []
@@ -78,7 +78,7 @@ class Spline(Traj_Base):
                 anchor_frames.append(frame)
         N = len(anchor_frames)
         if N<2: return np.eye(4)[None].repeat(self.nframe,axis=0)
-        
+
         # avoid adjactent same items
         bgn = 1 if anchor_frames[1].extrinsic[0,0] > 0.99 and \
                    anchor_frames[1].extrinsic[1,1] > 0.99 and \
@@ -86,7 +86,7 @@ class Spline(Traj_Base):
         anchor_frames = anchor_frames[bgn:]
         N = len(anchor_frames)
         if N<2: return np.eye(4)[None].repeat(self.nframe,axis=0)
-        
+
         for i in range(N):
             frame = anchor_frames[i]
             poses.append(np.linalg.inv(frame.extrinsic[None]))
