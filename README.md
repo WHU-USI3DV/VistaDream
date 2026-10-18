@@ -55,8 +55,15 @@ This is the official PyTorch implementation of the following publication:
 </p>
 
 ## 🆕 News
+- 2026-10-18: The journal version of VistaDream has been accepted by IEEE TPAMI. See [`moge3-lbd`](https://github.com/WHU-USI3DV/VistaDream/tree/moge3-lbd) branch.
 - 2025-06-26: VistaDream is accepted by ICCV 2025!
 - 2024-10-23: Code, [[project page]](https://vistadream-project-page.github.io/), and [[arXiv paper]](https://arxiv.org/abs/2410.16892) are aviliable.
+
+## 💻  Recommended installation and depth-model upgrade !
+
+- VistaDream depends on several GPU, native, and third-party packages. To avoid installation errors and version conflicts, we strongly recommend using Codex or another coding agent to create the environment step by step, verify each dependency, and record any platform-specific fixes.
+
+- If you have already installed the original VistaDream environment, you can ask an agent to update the depth modules, for instance, using MoGe-3 for depth estimation and LingBot-Depth for depth completion. This upgrade provides a substantial improvement in reconstruction quality. The corresponding interactive interface is available in the [`moge3-lbd`](https://github.com/WHU-USI3DV/VistaDream/tree/moge3-lbd) branch for reference.
 
 ## 💻 Requirements
 The code has been tested on:
