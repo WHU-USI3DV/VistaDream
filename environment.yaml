@@ -17,9 +17,9 @@ dependencies:
   - pyyaml=6.0.2
   - pip:
       - accelerate==1.9.0
-      - diffusers==0.37.0.dev0
-      - transformers==4.57.0.dev0
-      - huggingface-hub==1.0.0rc2
+      - diffusers==0.37.0
+      - transformers==4.57.0
+      - huggingface-hub==0.36.2
       - tokenizers==0.22.1
       - safetensors==0.5.3
       - einops==0.8.1
@@ -35,10 +35,9 @@ dependencies:
       - torchsde==0.2.6
       - ftfy==6.3.1
       - roma==1.5.4
-      - gradio==5.41.0
-      - gradio-client==1.11.0
+      - gradio==4.44.1
       - gradio-model3dgscamera==0.0.3
       - gsplat==1.5.3
       - psutil==7.0.0
       - pillow==10.4.0
-      - pillow-heif==1.1.0
+      - pillow-heif==0.22.0

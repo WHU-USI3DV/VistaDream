@@ -26,7 +26,7 @@ cd ../..
 - Install requirements of OneFormer
 ```
 # detectron2
-python -m pip install 'git+https://github.com/facebookresearch/detectron2.git'
+python -m pip install --no-build-isolation 'git+https://github.com/facebookresearch/detectron2.git'
 # MSDA
 cd tools/OneFormer/oneformer/modeling/pixel_decoder/ops
 sh make.sh
