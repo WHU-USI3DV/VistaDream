@@ -1,11 +1,8 @@
-# VistaDreamer for Interactive Reconstruction
+# A VistaDreamer Interface for Interactive Reconstruction
 
 > **VistaDreamer:  Zero-shot Single-view Scene Reconstruction by Multi-view Consistency Sampling**<br/>
 > [Haiping Wang](https://hpwang-whu.github.io/), [Yuan Liu](https://liuyuan-pal.github.io/), [Ziwei Liu](https://liuziwei7.github.io/), [Yulan Guo](https://www.yulanguo.cn/), [Yu-Shen Liu](https://yushen-liu.github.io/), [Wenping Wang](https://www.cs.hku.hk/people/academic-staff/wenping), [Zhen Dong](https://dongzhenwhu.github.io/index.html), [Bisheng Yang](https://3s.whu.edu.cn/info/1025/1415.htm)<br/>
 > *TPAMI 2026*<br/>
-
-
-An INTERFACE-only release of VistaDreamer.
 
 This release reconstructs and refines a Gaussian scene from one image through a
 Gradio interface. **MoGe-3** estimates the scaffold's metric depth and camera
@@ -19,10 +16,10 @@ To avoid issues caused by installation errors or version conflicts, we strongly 
 > Note: if you have previously installed VistaDream, we recommend asking the agent to replace the depth estimation module with MoGe3 and the depth completion module with Lingbot-Depth, which can significantly improve performance.
 
 ## Install by hand
+> Note: Because these dependency files were generated from tests on an RTX 5090 GPU, it is still unclear whether migration will cause compatibility issues.
 
 Linux x86_64, an NVIDIA CUDA GPU (tested on 4090 and 5090), and Conda/Miniforge are required. The supplied
-environment uses Python 3.10, PyTorch 2.7.1 and CUDA 12.8. See
-[INSTALL.md](INSTALL.md) for compiler setup and verification.
+environment uses Python 3.10, PyTorch 2.7.1 and CUDA 12.8. 
 
 ```bash
 conda env create -f environment.yaml
