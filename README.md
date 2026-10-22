@@ -31,14 +31,10 @@ bash download_weights.sh
 ## Lunch the interface
 
 - Use ```python DESCRIBE.py --image <png/jpg file>``` to get the description of the image.
-
-- Lunch the interface for interactive generation with 
-```
-python INTERFACE.py
-```
+- Lunch the interface for interactive generation with  ```python INTERFACE.py```.
 - Workflow
 <p align="center">
-  <img src="data/assert/interface/interf.gif" alt="Interactive interface demo" width="90%">
+  <img src="data/interf.gif" alt="Interactive interface demo" width="90%">
 </p>
 
 1. Upload an image, enter the above image description, set the seed, and click **Build Scaffold**.
